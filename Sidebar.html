@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+    }
+
+    /* Header */
+    .header {
+      margin-bottom: 16px;
+    }
+    .header h2 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #202124;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+    .btn-primary {
+      background: #1a73e8;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled {
+      background: #dadce0;
+      color: #80868b;
+      cursor: default;
+    }
+    .btn-secondary {
+      background: #fff;
+      color: #1a73e8;
+      border: 1px solid #dadce0;
+    }
+    .btn-secondary:hover { background: #f1f3f4; }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #5f6368;
+    }
+    .toggle-row input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Status */
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    /* Summary bar */
+    .summary {
+      display: none;
+      padding: 8px 12px;
+      background: #f1f3f4;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #5f6368;
+    }
+    .summary.visible { display: flex; gap: 12px; flex-wrap: wrap; }
+    .summary .count {
+      font-weight: 500;
+      color: #202124;
+    }
+    .summary .count.errors { color: #c5221f; }
+    .summary .count.warnings { color: #e37400; }
+
+    /* Filter tabs */
+    .filters {
+      display: none;
+      gap: 4px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .filters.visible { display: flex; }
+    .filter-btn {
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      border: 1px solid #dadce0;
+      background: #fff;
+      color: #5f6368;
+      cursor: pointer;
+    }
+    .filter-btn.active {
+      background: #e8f0fe;
+      color: #1967d2;
+      border-color: #1967d2;
+    }
+
+    /* Issue cards */
+    .issues { margin-top: 8px; }
+    .issue-card {
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      transition: box-shadow 0.2s;
+    }
+    .issue-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .issue-card.severity-error { border-left: 3px solid #c5221f; }
+    .issue-card.severity-warning { border-left: 3px solid #e37400; }
+    .issue-card.severity-info { border-left: 3px solid #1a73e8; }
+
+    .issue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+    .issue-category {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f1f3f4;
+      color: #5f6368;
+    }
+    .issue-severity {
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .issue-severity.error { color: #c5221f; }
+    .issue-severity.warning { color: #e37400; }
+    .issue-severity.info { color: #1a73e8; }
+
+    .issue-original {
+      font-family: 'Google Sans Mono', monospace;
+      font-size: 12px;
+      background: #fce8e6;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      word-break: break-word;
+    }
+    .issue-message {
+      font-size: 12px;
+      color: #5f6368;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+    .issue-suggestion {
+      font-family: 'Google Sans Mono', monospace;
+      font-size: 12px;
+      background: #e6f4ea;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+    .issue-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: none;
+      font-weight: 500;
+    }
+    .btn-apply {
+      background: #e6f4ea;
+      color: #137333;
+    }
+    .btn-apply:hover { background: #ceead6; }
+    .btn-dismiss {
+      background: #f1f3f4;
+      color: #5f6368;
+    }
+    .btn-dismiss:hover { background: #dadce0; }
+    .btn-highlight {
+      background: #fef7e0;
+      color: #e37400;
+    }
+    .btn-highlight:hover { background: #feefc3; }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #5f6368;
+    }
+    .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* Applied state */
+    .issue-card.applied {
+      opacity: 0.5;
+      border-color: #dadce0;
+      border-left-color: #dadce0;
+    }
+    .issue-card.dismissed { display: none; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>Epoch editorial checker</h2>
+    <div class="subtitle">Style guide compliance checker</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnCheck" onclick="runCheck()">Check document</button>
+    <button class="btn btn-secondary" id="btnClear" onclick="clearResults()" style="display:none">Clear</button>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="toggleLLM">
+    <label for="toggleLLM">Include AI-powered style suggestions</label>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="filters" id="filters"></div>
+
+  <div class="issues" id="issues"></div>
+
+  <script>
+    var allIssues = [];
+    var activeFilter = 'all';
+
+    function runCheck() {
+      var btn = document.getElementById('btnCheck');
+      btn.disabled = true;
+      btn.textContent = 'Checking...';
+      showStatus('running', 'Analyzing document...');
+      document.getElementById('issues').innerHTML = '';
+      document.getElementById('summary').className = 'summary';
+      document.getElementById('filters').className = 'filters';
+
+      var useLLM = document.getElementById('toggleLLM').checked;
+      google.script.run
+        .withSuccessHandler(onCheckComplete)
+        .withFailureHandler(onCheckError)
+        .runChecks({ useLLM: useLLM });
+    }
+
+    function onCheckComplete(issues) {
+      allIssues = issues || [];
+      var btn = document.getElementById('btnCheck');
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+      document.getElementById('btnClear').style.display = '';
+
+      if (allIssues.length === 0) {
+        showStatus('done', 'No issues found!');
+        document.getElementById('issues').innerHTML =
+          '<div class="empty-state"><div class="icon">&#10003;</div>Document looks good!</div>';
+        return;
+      }
+
+      showStatus('done', allIssues.length + ' issue' + (allIssues.length === 1 ? '' : 's') + ' found');
+      renderSummary();
+      renderFilters();
+      renderIssues();
+    }
+
+    function onCheckError(err) {
+      var btn = document.getElementById('btnCheck');
+      btn.disabled = false;
+      btn.textContent = 'Check document';
+      showStatus('error', 'Error: ' + (err.message || err));
+    }
+
+    function showStatus(type, msg) {
+      var el = document.getElementById('status');
+      el.className = 'status visible ' + type;
+      el.textContent = msg;
+    }
+
+    function renderSummary() {
+      var counts = { error: 0, warning: 0, info: 0 };
+      allIssues.forEach(function(issue) { counts[issue.severity] = (counts[issue.severity] || 0) + 1; });
+
+      var html = '';
+      if (counts.error > 0) html += '<span class="count errors">' + counts.error + ' error' + (counts.error > 1 ? 's' : '') + '</span>';
+      if (counts.warning > 0) html += '<span class="count warnings">' + counts.warning + ' warning' + (counts.warning > 1 ? 's' : '') + '</span>';
+      if (counts.info > 0) html += '<span class="count">' + counts.info + ' suggestion' + (counts.info > 1 ? 's' : '') + '</span>';
+
+      var el = document.getElementById('summary');
+      el.innerHTML = html;
+      el.className = 'summary visible';
+    }
+
+    function renderFilters() {
+      var categories = {};
+      allIssues.forEach(function(issue) { categories[issue.category] = true; });
+      var cats = Object.keys(categories).sort();
+
+      var html = '<button class="filter-btn active" onclick="setFilter(\'all\', this)">All</button>';
+      cats.forEach(function(cat) {
+        html += '<button class="filter-btn" onclick="setFilter(\'' + cat + '\', this)">' + cat + '</button>';
+      });
+
+      var el = document.getElementById('filters');
+      el.innerHTML = html;
+      el.className = 'filters visible';
+    }
+
+    function setFilter(category, btnEl) {
+      activeFilter = category;
+      document.querySelectorAll('.filter-btn').forEach(function(b) { b.className = 'filter-btn'; });
+      btnEl.className = 'filter-btn active';
+      renderIssues();
+    }
+
+    function renderIssues() {
+      var container = document.getElementById('issues');
+      container.innerHTML = '';
+
+      allIssues.forEach(function(issue, idx) {
+        if (activeFilter !== 'all' && issue.category !== activeFilter) return;
+
+        var card = document.createElement('div');
+        card.className = 'issue-card severity-' + issue.severity;
+        card.id = 'issue-' + idx;
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', (function(i) {
+          return function(e) {
+            if (e.target.tagName === 'BUTTON') return; // don't navigate when clicking action buttons
+            goToIssue(i);
+          };
+        })(idx));
+
+        var html = '<div class="issue-header">';
+        html += '<span class="issue-category">' + escHtml(issue.category) + '</span>';
+        html += '<span class="issue-severity ' + issue.severity + '">' + issue.severity + '</span>';
+        html += '</div>';
+
+        if (issue.original) {
+          html += '<div class="issue-original">' + escHtml(issue.original) + '</div>';
+        }
+
+        html += '<div class="issue-message">' + escHtml(issue.message) + '</div>';
+
+        if (issue.suggestion) {
+          html += '<div class="issue-suggestion">' + escHtml(issue.suggestion) + '</div>';
+        }
+
+        html += '<div class="issue-actions">';
+        if (issue.suggestion) {
+          html += '<button class="btn-sm btn-apply" onclick="applyFix(' + idx + ')">Apply</button>';
+        }
+        html += '<button class="btn-sm btn-dismiss" onclick="dismissIssue(' + idx + ')">Dismiss</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    var lastHighlighted = null;
+
+    function goToIssue(idx) {
+      var issue = allIssues[idx];
+      if (!issue || !issue.original) return;
+
+      // Clear previous highlight
+      if (lastHighlighted !== null && lastHighlighted !== idx) {
+        var prev = allIssues[lastHighlighted];
+        if (prev && prev.original) {
+          google.script.run.removeHighlight(prev.paragraphIndex, prev.original);
+        }
+      }
+      lastHighlighted = idx;
+
+      var card = document.getElementById('issue-' + idx);
+      if (card) card.style.opacity = '0.6';
+      google.script.run
+        .withSuccessHandler(function() {
+          if (card) card.style.opacity = '';
+        })
+        .withFailureHandler(function() { if (card) card.style.opacity = ''; })
+        .highlightAndSelect(issue.paragraphIndex, issue.original);
+    }
+
+    function applyFix(idx) {
+      var issue = allIssues[idx];
+      if (!issue || !issue.suggestion) return;
+
+      google.script.run
+        .withSuccessHandler(function(success) {
+          if (success) {
+            var card = document.getElementById('issue-' + idx);
+            if (card) card.className += ' dismissed';
+            if (lastHighlighted === idx) lastHighlighted = null;
+          }
+        })
+        .applyFix(issue.paragraphIndex, issue.original, issue.suggestion);
+    }
+
+    function highlightIssue(idx) {
+      var issue = allIssues[idx];
+      if (!issue || !issue.original) return;
+
+      google.script.run.highlightText(issue.paragraphIndex, issue.original, '#F4CCCC');
+    }
+
+    function dismissIssue(idx) {
+      var card = document.getElementById('issue-' + idx);
+      if (card) card.className += ' dismissed';
+      // Remove highlight if it was applied
+      var issue = allIssues[idx];
+      if (issue && issue.original) {
+        google.script.run.removeHighlight(issue.paragraphIndex, issue.original);
+      }
+    }
+
+    function clearResults() {
+      allIssues = [];
+      document.getElementById('issues').innerHTML = '';
+      document.getElementById('summary').className = 'summary';
+      document.getElementById('filters').className = 'filters';
+      document.getElementById('status').className = 'status';
+      document.getElementById('btnCheck').textContent = 'Check document';
+      document.getElementById('btnClear').style.display = 'none';
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+
+</body>
+</html>

@@ -143,6 +143,17 @@ function highlightAndSelect(paragraphIndex, original) {
 }
 
 /**
+ * Clear previous highlight + highlight and scroll to new issue in a single server call.
+ */
+function navigateToIssue(prevParagraphIndex, prevOriginal, newParagraphIndex, newOriginal) {
+  if (prevOriginal) {
+    highlightText(prevParagraphIndex, prevOriginal, '#ffffff');
+  }
+  highlightText(newParagraphIndex, newOriginal, '#F4CCCC');
+  return selectText(newParagraphIndex, newOriginal);
+}
+
+/**
  * Select the matched text in the document, scrolling the viewport to it.
  */
 function selectText(paragraphIndex, original) {
@@ -165,5 +176,14 @@ function selectText(paragraphIndex, original) {
 }
 
 // ---------------------------------------------------------------------------
+// LLM check (called separately from sidebar for async loading)
+// ---------------------------------------------------------------------------
+
+function runLLMCheckFromSidebar() {
+  return runLLMCheck(getDocumentText());
+}
+
+// ---------------------------------------------------------------------------
 // Admin settings — see configureLLM() in ClaudeAPI.gs
 // ---------------------------------------------------------------------------
+

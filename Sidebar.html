@@ -236,6 +236,19 @@
       border-left-color: #dadce0;
     }
     .issue-card.dismissed { display: none; }
+
+    /* AI badge */
+    .ai-badge {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #e8daef;
+      color: #7b2d8e;
+      margin-left: 6px;
+    }
   </style>
 </head>
 <body>
@@ -266,6 +279,7 @@
   <script>
     var allIssues = [];
     var activeFilter = 'all';
+    var llmPending = false;
 
     function runCheck() {
       var btn = document.getElementById('btnCheck');
@@ -277,30 +291,87 @@
       document.getElementById('filters').className = 'filters';
 
       var useLLM = document.getElementById('toggleLLM').checked;
+
+      // Phase 1: deterministic rules (instant)
       google.script.run
-        .withSuccessHandler(onCheckComplete)
+        .withSuccessHandler(function(issues) {
+          onDeterministicComplete(issues, useLLM);
+        })
         .withFailureHandler(onCheckError)
-        .runChecks({ useLLM: useLLM });
+        .runChecks({ useLLM: false });
     }
 
-    function onCheckComplete(issues) {
+    function onDeterministicComplete(issues, useLLM) {
       allIssues = issues || [];
-      var btn = document.getElementById('btnCheck');
-      btn.disabled = false;
-      btn.textContent = 'Re-check';
       document.getElementById('btnClear').style.display = '';
 
-      if (allIssues.length === 0) {
+      if (allIssues.length === 0 && !useLLM) {
+        var btn = document.getElementById('btnCheck');
+        btn.disabled = false;
+        btn.textContent = 'Re-check';
         showStatus('done', 'No issues found!');
         document.getElementById('issues').innerHTML =
           '<div class="empty-state"><div class="icon">&#10003;</div>Document looks good!</div>';
         return;
       }
 
-      showStatus('done', allIssues.length + ' issue' + (allIssues.length === 1 ? '' : 's') + ' found');
+      var statusMsg = allIssues.length + ' issue' + (allIssues.length === 1 ? '' : 's') + ' found';
+      if (useLLM) {
+        statusMsg += ' — loading AI suggestions...';
+        showStatus('running', statusMsg);
+      } else {
+        showStatus('done', statusMsg);
+        var btn = document.getElementById('btnCheck');
+        btn.disabled = false;
+        btn.textContent = 'Re-check';
+      }
+
       renderSummary();
       renderFilters();
       renderIssues();
+
+      // Phase 2: LLM suggestions (async)
+      if (useLLM) {
+        llmPending = true;
+        google.script.run
+          .withSuccessHandler(onLLMComplete)
+          .withFailureHandler(onLLMError)
+          .runLLMCheckFromSidebar();
+      }
+    }
+
+    function onLLMComplete(llmIssues) {
+      llmPending = false;
+      var btn = document.getElementById('btnCheck');
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+
+      llmIssues = llmIssues || [];
+      // Mark LLM issues so we can show the AI badge
+      for (var i = 0; i < llmIssues.length; i++) {
+        llmIssues[i].isAI = true;
+      }
+      allIssues = allIssues.concat(llmIssues);
+
+      // Re-sort by position
+      allIssues.sort(function(a, b) {
+        if (a.paragraphIndex !== b.paragraphIndex) return a.paragraphIndex - b.paragraphIndex;
+        return (a.matchStart || 0) - (b.matchStart || 0);
+      });
+
+      var total = allIssues.length;
+      showStatus('done', total + ' issue' + (total === 1 ? '' : 's') + ' found (including AI suggestions)');
+      renderSummary();
+      renderFilters();
+      renderIssues();
+    }
+
+    function onLLMError(err) {
+      llmPending = false;
+      var btn = document.getElementById('btnCheck');
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+      showStatus('done', allIssues.length + ' issue' + (allIssues.length === 1 ? '' : 's') + ' found (AI suggestions failed: ' + (err.message || err) + ')');
     }
 
     function onCheckError(err) {
@@ -371,7 +442,9 @@
         })(idx));
 
         var html = '<div class="issue-header">';
-        html += '<span class="issue-category">' + escHtml(issue.category) + '</span>';
+        html += '<span class="issue-category">' + escHtml(issue.category);
+        if (issue.isAI) html += '<span class="ai-badge">AI</span>';
+        html += '</span>';
         html += '<span class="issue-severity ' + issue.severity + '">' + issue.severity + '</span>';
         html += '</div>';
 
@@ -403,23 +476,27 @@
       var issue = allIssues[idx];
       if (!issue || !issue.original) return;
 
-      // Clear previous highlight
+      // Gather previous highlight info
+      var prevParagraphIndex = null;
+      var prevOriginal = null;
       if (lastHighlighted !== null && lastHighlighted !== idx) {
         var prev = allIssues[lastHighlighted];
         if (prev && prev.original) {
-          google.script.run.removeHighlight(prev.paragraphIndex, prev.original);
+          prevParagraphIndex = prev.paragraphIndex;
+          prevOriginal = prev.original;
         }
       }
       lastHighlighted = idx;
 
       var card = document.getElementById('issue-' + idx);
       if (card) card.style.opacity = '0.6';
+      // Single server call: clear old highlight + highlight new + scroll
       google.script.run
         .withSuccessHandler(function() {
           if (card) card.style.opacity = '';
         })
         .withFailureHandler(function() { if (card) card.style.opacity = ''; })
-        .highlightAndSelect(issue.paragraphIndex, issue.original);
+        .navigateToIssue(prevParagraphIndex, prevOriginal, issue.paragraphIndex, issue.original);
     }
 
     function applyFix(idx) {

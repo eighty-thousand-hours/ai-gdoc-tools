@@ -23,9 +23,14 @@ function authorize() {
 }
 
 function showSidebar() {
-  var html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('Epoch editorial checker');
-  DocumentApp.getUi().showSidebar(html);
+  var html = HtmlService.createTemplateFromFile('Sidebar');
+  html.userEmail = Session.getEffectiveUser().getEmail();
+  var output = html.evaluate().setTitle('Epoch editorial checker');
+  DocumentApp.getUi().showSidebar(output);
+}
+
+function checkAuth() {
+  return true;
 }
 
 

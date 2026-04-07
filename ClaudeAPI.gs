@@ -100,21 +100,29 @@ var STYLE_GUIDE_SYSTEM_PROMPT = [
   '',
   'EPOCH VOICE: Authoritative but accessible. Empirical and evidence-based. Avoids hype, speculation, and unsubstantiated claims.',
   'First-person plural ("we") in papers, reports, Data Insights, social media. First-person singular ("I") allowed in Gradient Updates and podcasts.',
-  'Singular companies take "it" not "they" (e.g. "OpenAI released its model").',
   '',
-  'Focus on:',
-  '1. TONE: Flag hype language ("breakthrough", "revolutionary", "game-changing"), unsubstantiated superlatives, unnecessarily complex prose, or overly casual tone for the content type.',
-  '2. HEDGING: Claims should be qualified appropriately ("suggests" not "proves", "indicates" not "demonstrates"). Flag both under-hedging (overclaiming) and excessive hedging that weakens the writing.',
-  '3. CLARITY: Flag ambiguous pronoun references, overly long sentences (>40 words), paragraphs making too many points, and jargon used without explanation on first reference.',
-  '4. ACTIVE VOICE: Prefer active over passive voice. Exception: when the actor is unknown, obvious, or irrelevant.',
-  '5. PRECISION: Flag vague quantifiers ("many", "significant", "large", "substantial") when a specific number would be better. Flag "percent" vs "percentage points" confusion.',
-  '6. STRUCTURE: Flag compound modifiers before nouns missing hyphens (e.g. "long run profitability" should be "long-run profitability"). Flag "which" used restrictively without comma (should be "that").',
+  'Focus ONLY on issues that require human/LLM judgment — things a regex cannot detect:',
   '',
-  'Do NOT flag:',
-  '- Spelling, terminology, FLOP notation, or brand name capitalization (handled by deterministic checker)',
-  '- Filler phrases like "in order to" (handled by deterministic checker)',
-  '- Grammar issues (handled by existing tools)',
-  '- Citation format or link formatting',
+  '1. TONE: Flag hype language ("breakthrough", "revolutionary", "game-changing", "unprecedented"), unsubstantiated superlatives ("the best", "the most"), or overly casual/sensational phrasing for research content.',
+  '2. HEDGING: Claims should be qualified appropriately ("suggests" not "proves", "indicates" not "demonstrates", "appears to" not "clearly"). Flag both under-hedging (overclaiming) and excessive hedging that weakens the writing.',
+  '3. CLARITY: Flag ambiguous pronoun references where the antecedent is unclear, overly long sentences (>40 words), paragraphs making too many unrelated points, and jargon used without explanation on first reference.',
+  '4. VOICE: Flag passive voice where active voice would be clearer and the actor is known. Flag "they"/"their" referring to a singular company mentioned in a PRIOR sentence (e.g. "Google released Gemini. They said..." should be "...It said...").',
+  '5. PRECISION: Flag vague quantifiers ("many", "significant", "large", "substantial", "a number of", "various") when a specific number or comparison would be more informative. Flag "percent" vs "percentage points" confusion.',
+  '6. STRUCTURE: Flag "which" used restrictively without a preceding comma (should be "that"). Flag dangling modifiers. Flag unclear parallel structure in lists.',
+  '',
+  'IMPORTANT — Do NOT flag any of the following (they are already handled by a deterministic checker):',
+  '- Spelling, terminology, glossary terms, or brand name capitalization',
+  '- FLOP/FLOPs notation',
+  '- Filler phrases ("in order to", "it should be noted", etc.)',
+  '- Contractions, exclamation points, or other punctuation issues',
+  '- Number formatting, date formatting, or unit abbreviations',
+  '- Hyphenation of -ly adverbs (e.g. "highly-accurate" is already caught)',
+  '- Company pronoun usage when the company name appears in the SAME sentence (already caught)',
+  '- Timezone abbreviations, decade apostrophes, ellipsis formatting',
+  '- a.m./p.m. formatting, en dash for ranges, multiplication signs',
+  '- Any issue that can be detected by pattern matching or regex',
+  '',
+  'Be selective. Only flag issues where your suggestion genuinely improves the writing. Aim for 3-8 high-value suggestions per document, not an exhaustive list.',
   '',
   'Return your response as a JSON array of objects, each with:',
   '  - "excerpt": the exact text span with the issue (20-60 chars, must be a verbatim substring of the input)',
@@ -219,7 +227,16 @@ function parseLLMResponse_(responseText, documentText) {
 
   try {
     var cleaned = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    var parsed = JSON.parse(cleaned);
+    // Try direct parse first; if that fails, attempt to fix common JSON issues
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      Logger.log('LLM raw response (first 500 chars): ' + cleaned.substring(0, 500));
+      // Attempt repair: remove trailing commas before ] or }
+      var repaired = cleaned.replace(/,\s*([\]}])/g, '$1');
+      parsed = JSON.parse(repaired);
+    }
     if (!Array.isArray(parsed)) return [];
 
     var paragraphs = getDocumentParagraphs();

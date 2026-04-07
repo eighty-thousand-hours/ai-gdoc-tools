@@ -56,6 +56,31 @@ var GLOSSARY_RULES = [
   ['at the end of the day', null, 'Cliché — rephrase'],
   ['as a matter of fact', null, 'Filler — cut or rephrase'],
 
+  // Diacritics
+  ['\\bnaive\\b', 'naïve', 'Use diaeresis'],
+  ['\\bnaivete\\b', 'naïveté', 'Use diacritics'],
+  ['\\bnaivety\\b', 'naïveté', 'Use diacritics'],
+
+  // Abbreviation periods
+  ['A\\.I\\.', 'AI', 'No periods in abbreviations'],
+  ['U\\.S\\.', 'US', 'No periods (exception: Washington, D.C.)'],
+  ['U\\.K\\.', 'UK', 'No periods'],
+  ['E\\.U\\.', 'EU', 'No periods'],
+  ['Ph\\.D\\.?', 'PhD', 'No periods in academic degrees'],
+  ['M\\.B\\.A\\.?', 'MBA', 'No periods in academic degrees'],
+
+  // Brand names — additional
+  ['\\banthropic\\b', 'Anthropic', 'Capitalize'],
+  ['Gemini-1', 'Gemini 1', 'Google models use space, not hyphen'],
+  ['Gemini-2', 'Gemini 2', 'Google models use space, not hyphen'],
+  ['PaLM-2', 'PaLM 2', 'Google models use space, not hyphen'],
+  ['DeepSeek-V3', 'DeepSeek V3', 'DeepSeek models use space, not hyphen'],
+  ['DeepSeek-V2', 'DeepSeek V2', 'DeepSeek models use space, not hyphen'],
+  ['DeepSeek-R1', 'DeepSeek R1', 'DeepSeek models use space, not hyphen'],
+
+  // Hyphenation
+  ['test time compute', 'test-time compute', 'Hyphenate compound modifier'],
+
   // Usage
   ['begs the question', 'raises the question', 'Almost always a misuse of "begs the question"'],
   ['whether or not', 'whether', '"or not" is usually superfluous'],
@@ -66,6 +91,8 @@ var GLOSSARY_RULES = [
   // Other
   ['click here', null, 'Avoid — integrate links naturally into text'],
   ['SWE-bench verified', 'SWE-bench Verified', 'Capital V'],
+  ['\\(link\\)', null, 'Avoid — integrate links naturally into text'],
+  ['\\bvs\\.', 'versus', 'Write out "versus" in running text; "vs." only in tables/figures'],
 ];
 
 // ---------------------------------------------------------------------------
@@ -191,6 +218,82 @@ var FORMATTING_RULES = [
     message: 'Consider using readable short forms: "3.4 billion" instead of "3,400,000,000".',
     severity: 'info',
     category: 'formatting'
+  },
+  {
+    id: 'fmt-space-before-percent',
+    pattern: /\d\s+%/g,
+    message: 'No space before "%". Write "48%" not "48 %".',
+    severity: 'error',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-date-ordinal',
+    pattern: /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(st|nd|rd|th)\b/g,
+    message: 'Use cardinal numbers for dates: "December 25" not "December 25th".',
+    suggestion: function(match) { return match[1] + ' ' + match[2]; },
+    severity: 'warning',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-month-comma-year',
+    pattern: /\b(January|February|March|April|May|June|July|August|September|October|November|December),\s+(\d{4})\b/g,
+    message: 'No comma between month and year when no day is given: "March 1980" not "March, 1980".',
+    suggestion: function(match) { return match[1] + ' ' + match[2]; },
+    severity: 'warning',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-month-day-year-comma',
+    pattern: /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\s+(\d{4})\b/g,
+    message: 'Add a comma before the year: "January 5, 2025" not "January 5 2025".',
+    suggestion: function(match) { return match[1] + ' ' + match[2] + ', ' + match[3]; },
+    severity: 'warning',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-noon-midnight',
+    pattern: /\b12(?::00)?\s*(a\.m\.|p\.m\.|am|pm|AM|PM)/g,
+    message: 'Use "noon" for 12 p.m. and "midnight" for 12 a.m.',
+    severity: 'info',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-am-pm-format',
+    pattern: /\b(\d{1,2}(?::\d{2})?)\s*(a\.m\.|p\.m\.|A\.M\.|P\.M\.|am|pm|AM|PM)/g,
+    message: 'Use "a.m." and "p.m." (lowercase, with periods).',
+    severity: 'warning',
+    category: 'formatting',
+    test: function(match) {
+      var suffix = match[2];
+      // Don't flag if already correct: a.m. or p.m.
+      return suffix !== 'a.m.' && suffix !== 'p.m.';
+    }
+  },
+  {
+    id: 'fmt-per-year',
+    pattern: /\b(\d+(?:\.\d+)?%?)\s*\/\s*year\b/g,
+    message: 'Write "per year" instead of "/year" in running text.',
+    suggestion: function(match) { return match[1] + ' per year'; },
+    severity: 'warning',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-company-they',
+    pattern: /\b(OpenAI|Google|Meta|Anthropic|Microsoft|Apple|Amazon|Nvidia|xAI|DeepSeek|Mistral|Cohere)\s+(?:\w+\s+){0,4}(they|their|them|themselves)\b/g,
+    message: 'Refer to singular companies as "it"/"its", not "they"/"their".',
+    severity: 'info',
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-ampersand',
+    pattern: /\s&\s/g,
+    message: 'Avoid ampersands in running text. Write "and" instead (exception: R&D, organization names).',
+    severity: 'info',
+    category: 'formatting',
+    test: function(match) {
+      // Don't flag R&D
+      return true; // We'll rely on context; R&D is handled by not having spaces
+    }
   }
 ];
 
@@ -243,6 +346,28 @@ var MATH_RULES = [
     suggestion: function(match) { return match[1] + '–' + match[2]; },
     severity: 'warning',
     category: 'math'
+  },
+  {
+    id: 'math-numeric-range-hyphen',
+    pattern: /\b(\d+(?:\.\d+)?%?)\s*-\s*(\d+(?:\.\d+)?%?)\b/g,
+    message: 'Use an en dash (–) for ranges, not a hyphen: "70%–80%".',
+    suggestion: function(match) { return match[1] + '–' + match[2]; },
+    severity: 'warning',
+    category: 'math',
+    test: function(match) {
+      // Skip year ranges (handled by math-range-hyphen) and negative numbers
+      var n1 = parseInt(match[1]);
+      if (n1 >= 1900 && n1 <= 2100) return false;
+      return true;
+    }
+  },
+  {
+    id: 'math-multiplier-letter-x',
+    pattern: /\b(\d+)\s*x\s+(higher|lower|faster|slower|growth|more|less|greater|larger|smaller|bigger|increase|decrease|improvement)\b/gi,
+    message: 'Use "×" (multiplication sign) for multipliers, with no space: "4× higher".',
+    suggestion: function(match) { return match[1] + '× ' + match[2]; },
+    severity: 'warning',
+    category: 'math'
   }
 ];
 
@@ -260,12 +385,26 @@ function buildGlossaryRules_() {
 
     if (correct === null && note === null) continue;
 
-    var patternStr = '\\b' + wrong + '\\b';
+    // Only add \b where the pattern starts/ends with a word character.
+    // Patterns ending with escaped non-word chars (\. \) etc.) or
+    // already containing \b don't need extra boundaries.
+    var prefix = '\\b';
+    var suffix = '\\b';
+    // Skip leading \b if pattern already starts with \b or an escaped non-word char
+    if (/^\\b/.test(wrong) || /^\\[^a-zA-Z0-9]/.test(wrong)) {
+      prefix = '';
+    }
+    // Skip trailing \b if pattern already ends with \b, or ends with
+    // an escaped non-word char (optionally followed by ?)
+    if (/\\b$/.test(wrong) || /\\[^a-zA-Z0-9]\??$/.test(wrong)) {
+      suffix = '';
+    }
+    var patternStr = prefix + wrong + suffix;
     var pattern;
     try {
       pattern = new RegExp(patternStr, 'gi');
     } catch (e) {
-      patternStr = '\\b' + wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b';
+      patternStr = prefix + wrong.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + suffix;
       pattern = new RegExp(patternStr, 'gi');
     }
 

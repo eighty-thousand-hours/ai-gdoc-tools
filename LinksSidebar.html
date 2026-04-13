@@ -180,6 +180,37 @@
     }
     .suggestion-card.dismissed { display: none; }
 
+    /* Section divider */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #dadce0;
+      margin: 20px 0 16px;
+    }
+
+    /* Related work cards */
+    .rw-card {
+      border: 1px solid #dadce0;
+      border-left: 3px solid #7b2d8e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      transition: box-shadow 0.2s;
+    }
+    .rw-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .rw-card.applied {
+      opacity: 0.5;
+      border-color: #dadce0;
+      border-left-color: #137333;
+    }
+    .rw-card.dismissed { display: none; }
+
+    .rw-path {
+      font-family: 'Google Sans Mono', monospace;
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 4px;
+    }
+
     .auth-error {
       display: none;
       background: #fce8e6;
@@ -226,6 +257,24 @@
   <div class="summary" id="summary"></div>
 
   <div class="suggestions" id="suggestions"></div>
+
+  <hr class="section-divider">
+
+  <div class="header">
+    <h2>Related articles</h2>
+    <div class="subtitle">Suggest articles for the relatedWork frontmatter</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnRelated" onclick="runRelatedWork()">Suggest articles</button>
+    <button class="btn btn-secondary" id="btnClearRW" onclick="clearRelatedWork()" style="display:none">Clear</button>
+  </div>
+
+  <div class="status" id="rwStatus"></div>
+
+  <div class="summary" id="rwSummary"></div>
+
+  <div class="suggestions" id="relatedWork"></div>
   </div>
 
   <script>
@@ -395,6 +444,119 @@
       document.getElementById('status').className = 'status';
       document.getElementById('btnSuggest').textContent = 'Suggest links';
       document.getElementById('btnClear').style.display = 'none';
+    }
+
+    // ----- Related work -----
+
+    var allRelatedWork = [];
+
+    function runRelatedWork() {
+      var btn = document.getElementById('btnRelated');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+      showRWStatus('running', 'Finding related articles...');
+      document.getElementById('relatedWork').innerHTML = '';
+      document.getElementById('rwSummary').className = 'summary';
+
+      google.script.run
+        .withSuccessHandler(onRelatedWorkComplete)
+        .withFailureHandler(onRelatedWorkError)
+        .suggestRelatedWork();
+    }
+
+    function onRelatedWorkComplete(suggestions) {
+      var btn = document.getElementById('btnRelated');
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+      document.getElementById('btnClearRW').style.display = '';
+
+      allRelatedWork = suggestions || [];
+
+      if (allRelatedWork.length === 1 && allRelatedWork[0].error) {
+        showRWStatus('error', allRelatedWork[0].message);
+        return;
+      }
+
+      if (allRelatedWork.length === 0) {
+        showRWStatus('done', 'No related articles found.');
+        document.getElementById('relatedWork').innerHTML =
+          '<div class="empty-state"><div class="icon">&#128218;</div>No related articles to suggest.</div>';
+        return;
+      }
+
+      showRWStatus('done', allRelatedWork.length + ' article' + (allRelatedWork.length === 1 ? '' : 's') + ' suggested');
+      var summaryEl = document.getElementById('rwSummary');
+      summaryEl.innerHTML = '<span class="count">' + allRelatedWork.length + ' suggestion' + (allRelatedWork.length === 1 ? '' : 's') + '</span>';
+      summaryEl.className = 'summary visible';
+
+      renderRelatedWork();
+    }
+
+    function onRelatedWorkError(err) {
+      var btn = document.getElementById('btnRelated');
+      btn.disabled = false;
+      btn.textContent = 'Suggest articles';
+      showRWStatus('error', 'Error: ' + (err.message || err));
+    }
+
+    function showRWStatus(type, msg) {
+      var el = document.getElementById('rwStatus');
+      el.className = 'status visible ' + type;
+      el.textContent = msg;
+    }
+
+    function renderRelatedWork() {
+      var container = document.getElementById('relatedWork');
+      container.innerHTML = '';
+
+      allRelatedWork.forEach(function(item, idx) {
+        var card = document.createElement('div');
+        card.className = 'rw-card';
+        card.id = 'rw-' + idx;
+
+        var html = '';
+        html += '<div class="suggestion-target">';
+        html += '<a href="' + escHtml(item.url) + '" target="_blank">' + escHtml(item.title) + '</a>';
+        html += '</div>';
+        html += '<div class="rw-path">' + escHtml(item.path) + '</div>';
+        html += '<div class="suggestion-reason">' + escHtml(item.reason) + '</div>';
+
+        html += '<div class="suggestion-actions">';
+        html += '<button class="btn-sm btn-apply" onclick="applyRelatedWork(' + idx + ')">Add to frontmatter</button>';
+        html += '<button class="btn-sm btn-dismiss" onclick="dismissRelatedWork(' + idx + ')">Dismiss</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    function applyRelatedWork(idx) {
+      var item = allRelatedWork[idx];
+      if (!item) return;
+
+      google.script.run
+        .withSuccessHandler(function(success) {
+          if (success) {
+            var card = document.getElementById('rw-' + idx);
+            if (card) card.className += ' applied';
+          }
+        })
+        .applyRelatedWork(item.path);
+    }
+
+    function dismissRelatedWork(idx) {
+      var card = document.getElementById('rw-' + idx);
+      if (card) card.className += ' dismissed';
+    }
+
+    function clearRelatedWork() {
+      allRelatedWork = [];
+      document.getElementById('relatedWork').innerHTML = '';
+      document.getElementById('rwSummary').className = 'summary';
+      document.getElementById('rwStatus').className = 'status';
+      document.getElementById('btnRelated').textContent = 'Suggest articles';
+      document.getElementById('btnClearRW').style.display = 'none';
     }
 
     function escHtml(str) {

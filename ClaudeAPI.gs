@@ -464,3 +464,116 @@ function parseLinkSuggestions_(responseText, documentText) {
 
   return suggestions;
 }
+
+// ===========================================================================
+// Related work suggestions
+// ===========================================================================
+
+var RELATED_WORK_SYSTEM_PROMPT = [
+  'You are helping curate "Related work" links for a blog post on Epoch AI\'s website (epoch.ai).',
+  'Epoch is a nonprofit research institute that tracks and forecasts AI development through empirical, data-driven methods.',
+  '',
+  'Given a blog post draft and a catalog of all publications on the site, suggest the 3-5 most relevant',
+  'related publications that a reader of this article would find valuable. These will appear in a',
+  '"Related work" section at the end of the published article. Choose publications that:',
+  '- Cover closely related topics, methods, or datasets',
+  '- Would help a reader deepen their understanding of the subject',
+  '- Have substantive topical overlap (not just shared tags)',
+  '- Span different content types when relevant (blog posts, data insights, gradient updates)',
+  '',
+  'IMPORTANT: Only suggest paths that appear exactly in the catalog. Do not invent or guess paths.',
+  '',
+  'Return your response as a JSON array of objects, each with:',
+  '  - "path": the path of the suggested publication (must be from the catalog)',
+  '  - "title": the title of the publication',
+  '  - "reason": a brief explanation of why this is relevant (1 sentence)',
+  '',
+  'Return ONLY the JSON array. No markdown, no commentary. If no good matches exist, return [].'
+].join('\n');
+
+function runRelatedWorkSuggestion(documentText) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) {
+    return [{
+      error: true,
+      message: 'LLM API key not configured. Ask the add-on admin to run configureLLM() in the script editor.'
+    }];
+  }
+
+  var provider = PROVIDERS[config.provider];
+  if (!provider) {
+    return [{ error: true, message: 'Unknown LLM provider: "' + config.provider + '".' }];
+  }
+
+  var model = config.model || provider.defaultModel;
+
+  var text = documentText;
+  if (text.length > MAX_DOCUMENT_CHARS) {
+    text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
+  }
+
+  var catalogSummary = buildCatalogSummary_();
+  var userMessage = '## Catalog of Epoch publications\n\n' + catalogSummary +
+    '\n\n## Blog post draft to find related work for\n\n' + text;
+
+  var options = provider.buildRequest(config.apiKey, model, RELATED_WORK_SYSTEM_PROMPT, userMessage);
+
+  try {
+    var response = UrlFetchApp.fetch(provider.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Related work API error: ' + statusCode + ' \u2014 ' + response.getContentText());
+      return [{ error: true, message: 'LLM API returned HTTP ' + statusCode + '.' }];
+    }
+
+    var body = JSON.parse(response.getContentText());
+    var content = provider.extractContent(body);
+    if (!content) return [];
+
+    return parseRelatedWorkSuggestions_(content);
+  } catch (e) {
+    Logger.log('Related work API exception: ' + e.message);
+    return [{ error: true, message: 'Failed to reach the LLM API: ' + e.message }];
+  }
+}
+
+function parseRelatedWorkSuggestions_(responseText) {
+  var suggestions = [];
+
+  try {
+    var cleaned = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      var repaired = cleaned.replace(/,\s*([\]}])/g, '$1');
+      parsed = JSON.parse(repaired);
+    }
+    if (!Array.isArray(parsed)) return [];
+
+    var validPaths = {};
+    var catalog = getCatalog();
+    for (var c = 0; c < catalog.length; c++) {
+      validPaths[catalog[c].path] = true;
+    }
+
+    for (var i = 0; i < parsed.length; i++) {
+      var item = parsed[i];
+      if (!item.path) continue;
+      if (!validPaths[item.path]) {
+        Logger.log('Filtered invalid related work path: ' + item.path);
+        continue;
+      }
+      suggestions.push({
+        path: item.path,
+        title: item.title || '',
+        url: LINK_BASE_URL + item.path,
+        reason: item.reason || ''
+      });
+    }
+  } catch (e) {
+    Logger.log('Failed to parse related work suggestions: ' + e.message);
+  }
+
+  return suggestions;
+}

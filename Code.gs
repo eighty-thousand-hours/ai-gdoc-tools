@@ -272,6 +272,72 @@ function navigateToSuggestion(prevParagraphIndex, prevOriginal, newParagraphInde
 }
 
 // ---------------------------------------------------------------------------
+// Related work suggestions
+// ---------------------------------------------------------------------------
+
+function suggestRelatedWork() {
+  var documentText = getDocumentText();
+  return runRelatedWorkSuggestion(documentText);
+}
+
+/**
+ * Insert a relatedWork path into the frontmatter section of the document.
+ * Looks for "relatedWork:" in the first 30 paragraphs. If found, appends
+ * "  - /path" on the next line. If not found, appends "relatedWork:\n  - /path"
+ * after the last frontmatter field.
+ */
+function applyRelatedWork(path) {
+  var body = DocumentApp.getActiveDocument().getBody();
+  var paragraphs = body.getParagraphs();
+  var limit = Math.min(paragraphs.length, 30);
+  var NORMAL = DocumentApp.ParagraphHeading.NORMAL;
+
+  // Find existing relatedWork field
+  for (var i = 0; i < limit; i++) {
+    var text = paragraphs[i].getText();
+    if (text.match(/^relatedWork\s*:/)) {
+      // Find the last "  - ..." entry after relatedWork:
+      var insertAfter = i;
+      for (var j = i + 1; j < limit; j++) {
+        var nextText = paragraphs[j].getText();
+        if (nextText.match(/^\s+-\s/)) {
+          insertAfter = j;
+        } else {
+          break;
+        }
+      }
+      var p = body.insertParagraph(insertAfter + 1, '  - ' + path);
+      p.setHeading(NORMAL);
+      p.editAsText().setFontSize(10);
+      return true;
+    }
+  }
+
+  // relatedWork field not found — create it after the last metadata-looking line
+  var lastMetaLine = -1;
+  for (var k = 0; k < limit; k++) {
+    var kText = paragraphs[k].getText();
+    if (kText.match(/^\w[\w\s]*:/) || kText.match(/^\s+-\s/)) {
+      lastMetaLine = k;
+    } else if (lastMetaLine > 0 && kText.trim() === '') {
+      break; // end of frontmatter block
+    }
+  }
+
+  if (lastMetaLine >= 0) {
+    var p2 = body.insertParagraph(lastMetaLine + 1, '  - ' + path);
+    p2.setHeading(NORMAL);
+    p2.editAsText().setFontSize(10);
+    var p1 = body.insertParagraph(lastMetaLine + 1, 'relatedWork:');
+    p1.setHeading(NORMAL);
+    p1.editAsText().setFontSize(10);
+    return true;
+  }
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Admin settings — see configureLLM() in ClaudeAPI.gs
 // ---------------------------------------------------------------------------
 

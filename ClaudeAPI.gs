@@ -1,7 +1,8 @@
 /**
- * Epoch editorial checker — LLM integration
+ * Epoch AI — LLM integration
  *
  * Supports both Anthropic (Claude) and OpenAI APIs.
+ * Used for editorial style checking and internal link suggestions.
  * The admin configures the provider, model, and API key via Script Properties.
  */
 
@@ -291,4 +292,175 @@ function findExcerptLocation_(excerpt, paragraphs) {
   }
 
   return { paragraphIndex: 0, matchStart: 0, matchEnd: 0 };
+}
+
+// ===========================================================================
+// Internal link suggestions
+// ===========================================================================
+
+var LINK_BASE_URL = 'https://epoch.ai';
+
+var LINK_SUGGESTION_SYSTEM_PROMPT = [
+  'You are an internal linking assistant for Epoch AI, a nonprofit research institute that tracks and forecasts AI development.',
+  '',
+  'Your job is to identify phrases in a draft document that should link to existing Epoch publications. Good internal links:',
+  '- Connect the reader to relevant deeper analysis or data',
+  '- Use natural anchor text (the phrase the author already wrote, not forced keyword stuffing)',
+  '- Point to publications with substantive topical overlap',
+  '- Are selective — aim for 3-10 high-value links per document, not exhaustive linking',
+  '',
+  'Do NOT suggest links for:',
+  '- Phrases that are already hyperlinked (provided in the existing links list)',
+  '- Generic terms that happen to match a title (e.g. don\'t link "AI" to every AI article)',
+  '- Self-references (the document linking to itself)',
+  '- Phrases where adding a link would disrupt reading flow',
+  '',
+  'Return your response as a JSON array of objects, each with:',
+  '  - "excerpt": the exact text span to link (must be a verbatim substring of the document, 2-15 words)',
+  '  - "targetPath": the path of the target publication (must be from the catalog)',
+  '  - "targetTitle": the title of the target publication',
+  '  - "reason": a brief explanation of why this link is valuable (1 sentence)',
+  '',
+  'Return ONLY the JSON array. No markdown, no commentary. If no good links exist, return [].'
+].join('\n');
+
+// ---------------------------------------------------------------------------
+// Link suggestion main function
+// ---------------------------------------------------------------------------
+
+function runLinkSuggestion(documentText, existingLinks) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) {
+    return [{
+      error: true,
+      message: 'LLM API key not configured. Ask the add-on admin to run configureLLM() in the script editor.'
+    }];
+  }
+
+  var provider = PROVIDERS[config.provider];
+  if (!provider) {
+    return [{
+      error: true,
+      message: 'Unknown LLM provider: "' + config.provider + '".'
+    }];
+  }
+
+  var model = config.model || provider.defaultModel;
+
+  var text = documentText;
+  if (text.length > MAX_DOCUMENT_CHARS) {
+    text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
+  }
+
+  var catalogSummary = buildCatalogSummary_();
+
+  var existingLinksText = '';
+  if (existingLinks && existingLinks.length > 0) {
+    var linkLines = existingLinks.map(function(l) {
+      return '- "' + l.text + '" \u2192 ' + l.url;
+    });
+    existingLinksText = '\n\n## Existing links in this document (do NOT suggest these again)\n\n' + linkLines.join('\n');
+  }
+
+  var userMessage = '## Catalog of Epoch publications\n\n' + catalogSummary +
+    existingLinksText +
+    '\n\n## Document to suggest links for\n\n' + text;
+
+  var options = provider.buildRequest(config.apiKey, model, LINK_SUGGESTION_SYSTEM_PROMPT, userMessage);
+
+  try {
+    var response = UrlFetchApp.fetch(provider.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Link suggestion API error: ' + statusCode + ' \u2014 ' + response.getContentText());
+      return [{
+        error: true,
+        message: 'LLM API returned HTTP ' + statusCode + '. Check the API key and model configuration.'
+      }];
+    }
+
+    var body = JSON.parse(response.getContentText());
+    var content = provider.extractContent(body);
+    if (!content) return [];
+
+    return parseLinkSuggestions_(content, documentText);
+  } catch (e) {
+    Logger.log('Link suggestion API exception: ' + e.message);
+    return [{
+      error: true,
+      message: 'Failed to reach the LLM API: ' + e.message
+    }];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Catalog summary builder
+// ---------------------------------------------------------------------------
+
+function buildCatalogSummary_() {
+  var catalog = getCatalog();
+  var lines = [];
+  for (var i = 0; i < catalog.length; i++) {
+    var entry = catalog[i];
+    var line = '- ' + entry.path + ' | ' + entry.title + ' | ' + entry.contentType;
+    if (entry.tags) line += ' | Tags: ' + entry.tags;
+    if (entry.description) line += ' | ' + entry.description;
+    lines.push(line);
+  }
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Link suggestion response parsing
+// ---------------------------------------------------------------------------
+
+function parseLinkSuggestions_(responseText, documentText) {
+  var suggestions = [];
+
+  try {
+    var cleaned = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      Logger.log('Link suggestion raw response (first 500 chars): ' + cleaned.substring(0, 500));
+      var repaired = cleaned.replace(/,\s*([\]}])/g, '$1');
+      parsed = JSON.parse(repaired);
+    }
+    if (!Array.isArray(parsed)) return [];
+
+    var validPaths = {};
+    var catalog = getCatalog();
+    for (var c = 0; c < catalog.length; c++) {
+      validPaths[catalog[c].path] = true;
+    }
+
+    var paragraphs = getDocumentParagraphs();
+
+    for (var i = 0; i < parsed.length; i++) {
+      var item = parsed[i];
+      if (!item.excerpt || !item.targetPath) continue;
+      if (!validPaths[item.targetPath]) {
+        Logger.log('Filtered invalid link path: ' + item.targetPath);
+        continue;
+      }
+
+      var location = findExcerptLocation_(item.excerpt, paragraphs);
+
+      suggestions.push({
+        excerpt: item.excerpt,
+        targetPath: item.targetPath,
+        targetTitle: item.targetTitle || '',
+        targetUrl: LINK_BASE_URL + item.targetPath,
+        reason: item.reason || '',
+        paragraphIndex: location.paragraphIndex,
+        matchStart: location.matchStart,
+        matchEnd: location.matchEnd
+      });
+    }
+  } catch (e) {
+    Logger.log('Failed to parse link suggestions: ' + e.message);
+  }
+
+  return suggestions;
 }

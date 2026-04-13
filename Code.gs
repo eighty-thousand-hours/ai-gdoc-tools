@@ -1,15 +1,18 @@
 /**
- * Epoch editorial checker — Google Docs add-on
+ * Epoch AI — Google Docs add-on
+ *
+ * Provides editorial style checking and internal link suggestions.
  */
 
 // ---------------------------------------------------------------------------
-// Menu & sidebar
+// Menu & sidebars
 // ---------------------------------------------------------------------------
 
 function onOpen() {
   DocumentApp.getUi()
-    .createMenu('Editorial checker')
-    .addItem('Check document', 'showSidebar')
+    .createMenu('Epoch AI')
+    .addItem('Check style', 'showStyleSidebar')
+    .addItem('Suggest links', 'showLinksSidebar')
     .addToUi();
 }
 
@@ -22,10 +25,21 @@ function authorize() {
   Logger.log('Scopes authorized.');
 }
 
-function showSidebar() {
+function showStyleSidebar() {
   var html = HtmlService.createTemplateFromFile('Sidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch editorial checker');
+  var output = html.evaluate().setTitle('Epoch AI — Style checker');
+  DocumentApp.getUi().showSidebar(output);
+}
+
+function showSidebar() {
+  showStyleSidebar();
+}
+
+function showLinksSidebar() {
+  var html = HtmlService.createTemplateFromFile('LinksSidebar');
+  html.userEmail = Session.getEffectiveUser().getEmail();
+  var output = html.evaluate().setTitle('Epoch AI — Internal links');
   DocumentApp.getUi().showSidebar(output);
 }
 
@@ -186,6 +200,75 @@ function selectText(paragraphIndex, original) {
 
 function runLLMCheckFromSidebar() {
   return runLLMCheck(getDocumentText());
+}
+
+// ---------------------------------------------------------------------------
+// Internal link suggestions
+// ---------------------------------------------------------------------------
+
+/**
+ * Get all existing links in the document, so the LLM can avoid re-suggesting them.
+ */
+function getExistingLinks() {
+  var body = DocumentApp.getActiveDocument().getBody();
+  var links = [];
+  var numChildren = body.getNumChildren();
+
+  for (var i = 0; i < numChildren; i++) {
+    var child = body.getChild(i);
+    if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+
+    var text = child.editAsText();
+    var content = text.getText();
+    if (!content) continue;
+
+    var j = 0;
+    while (j < content.length) {
+      var url = text.getLinkUrl(j);
+      if (url) {
+        var start = j;
+        while (j < content.length && text.getLinkUrl(j) === url) j++;
+        links.push({ url: url, text: content.substring(start, j) });
+      } else {
+        j++;
+      }
+    }
+  }
+  return links;
+}
+
+function suggestLinks() {
+  var documentText = getDocumentText();
+  var existingLinks = getExistingLinks();
+  return runLinkSuggestion(documentText, existingLinks);
+}
+
+/**
+ * Wrap a text span in a hyperlink.
+ */
+function applyLink(paragraphIndex, linkText, url) {
+  var body = DocumentApp.getActiveDocument().getBody();
+  var paragraphs = body.getParagraphs();
+  if (paragraphIndex >= paragraphs.length) return false;
+
+  var paragraph = paragraphs[paragraphIndex];
+  var text = paragraph.getText();
+  var idx = text.indexOf(linkText);
+  if (idx === -1) return false;
+
+  paragraph.editAsText().setLinkUrl(idx, idx + linkText.length - 1, url);
+  return true;
+}
+
+/**
+ * Clear previous highlight + highlight and scroll to new link suggestion.
+ */
+function navigateToSuggestion(prevParagraphIndex, prevOriginal, newParagraphIndex, newOriginal) {
+  if (prevOriginal) {
+    highlightText(prevParagraphIndex, prevOriginal, '#ffffff');
+  }
+  highlightText(newParagraphIndex, newOriginal, '#D4EDDA');
+  return selectText(newParagraphIndex, newOriginal);
 }
 
 // ---------------------------------------------------------------------------

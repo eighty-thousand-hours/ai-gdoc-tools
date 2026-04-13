@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .header { margin-bottom: 16px; }
+    .header h2 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #202124;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+    .btn-primary {
+      background: #1a73e8;
+      color: #fff;
+    }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled {
+      background: #dadce0;
+      color: #80868b;
+      cursor: default;
+    }
+    .btn-secondary {
+      background: #fff;
+      color: #1a73e8;
+      border: 1px solid #dadce0;
+    }
+    .btn-secondary:hover { background: #f1f3f4; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .summary {
+      display: none;
+      padding: 8px 12px;
+      background: #f1f3f4;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #5f6368;
+    }
+    .summary.visible { display: block; }
+    .summary .count {
+      font-weight: 500;
+      color: #137333;
+    }
+
+    /* Suggestion cards */
+    .suggestions { margin-top: 8px; }
+    .suggestion-card {
+      border: 1px solid #dadce0;
+      border-left: 3px solid #1a73e8;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: box-shadow 0.2s;
+    }
+    .suggestion-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+
+    .suggestion-excerpt {
+      font-family: 'Google Sans Mono', monospace;
+      font-size: 12px;
+      background: #e8f0fe;
+      padding: 4px 6px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+
+    .suggestion-target {
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .suggestion-target a {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .suggestion-target a:hover { text-decoration: underline; }
+
+    .suggestion-type {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #f1f3f4;
+      color: #5f6368;
+      margin-bottom: 6px;
+      display: inline-block;
+    }
+
+    .suggestion-reason {
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .suggestion-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: none;
+      font-weight: 500;
+    }
+    .btn-apply {
+      background: #e6f4ea;
+      color: #137333;
+    }
+    .btn-apply:hover { background: #ceead6; }
+    .btn-dismiss {
+      background: #f1f3f4;
+      color: #5f6368;
+    }
+    .btn-dismiss:hover { background: #dadce0; }
+
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #5f6368;
+    }
+    .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+    .suggestion-card.applied {
+      opacity: 0.5;
+      border-color: #dadce0;
+      border-left-color: #137333;
+    }
+    .suggestion-card.applied .suggestion-excerpt {
+      background: #e6f4ea;
+    }
+    .suggestion-card.dismissed { display: none; }
+
+    .auth-error {
+      display: none;
+      background: #fce8e6;
+      border: 1px solid #f5c6cb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #c5221f;
+      line-height: 1.5;
+    }
+    .auth-error.visible { display: block; }
+    .auth-error strong { display: block; margin-bottom: 8px; font-size: 14px; }
+    .auth-error ol { margin: 8px 0 0 20px; color: #202124; }
+    .auth-error li { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+  <span id="loadAccount" hidden><?= userEmail ?></span>
+
+  <div class="auth-error" id="authError">
+    <strong>Multi-account conflict detected</strong>
+    This add-on can't communicate with Google Docs because you have multiple Google accounts signed in.
+    <ol>
+      <li>Open this document in a <b>dedicated Chrome profile</b> that only has your Epoch account signed in</li>
+      <li>Or open it in an <b>incognito window</b> and sign in with your Epoch account only</li>
+    </ol>
+  </div>
+
+  <div id="mainUI">
+  <div class="header">
+    <h2>Internal links</h2>
+    <div class="subtitle">Suggest links to related Epoch publications</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnSuggest" onclick="runSuggestions()">Suggest links</button>
+    <button class="btn btn-secondary" id="btnClear" onclick="clearResults()" style="display:none">Clear</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="suggestions" id="suggestions"></div>
+  </div>
+
+  <script>
+    // Proactive multi-account detection
+    (function() {
+      google.script.run
+        .withSuccessHandler(function() {})
+        .withFailureHandler(function(err) {
+          if (err.message && err.message.indexOf('PERMISSION_DENIED') !== -1) {
+            document.getElementById('mainUI').style.display = 'none';
+            document.getElementById('authError').className = 'auth-error visible';
+          }
+        })
+        .checkAuth();
+    })();
+
+    var allSuggestions = [];
+
+    function runSuggestions() {
+      var btn = document.getElementById('btnSuggest');
+      btn.disabled = true;
+      btn.textContent = 'Analyzing...';
+      showStatus('running', 'Reading document and finding link opportunities...');
+      document.getElementById('suggestions').innerHTML = '';
+      document.getElementById('summary').className = 'summary';
+
+      google.script.run
+        .withSuccessHandler(onSuggestionsComplete)
+        .withFailureHandler(onSuggestionsError)
+        .suggestLinks();
+    }
+
+    function onSuggestionsComplete(suggestions) {
+      var btn = document.getElementById('btnSuggest');
+      btn.disabled = false;
+      btn.textContent = 'Re-check';
+      document.getElementById('btnClear').style.display = '';
+
+      allSuggestions = suggestions || [];
+
+      // Check for error responses
+      if (allSuggestions.length === 1 && allSuggestions[0].error) {
+        showStatus('error', allSuggestions[0].message);
+        return;
+      }
+
+      if (allSuggestions.length === 0) {
+        showStatus('done', 'No link suggestions found.');
+        document.getElementById('suggestions').innerHTML =
+          '<div class="empty-state"><div class="icon">&#128279;</div>No internal links to suggest.</div>';
+        return;
+      }
+
+      showStatus('done', allSuggestions.length + ' link' + (allSuggestions.length === 1 ? '' : 's') + ' suggested');
+      var summaryEl = document.getElementById('summary');
+      summaryEl.innerHTML = '<span class="count">' + allSuggestions.length + ' suggestion' + (allSuggestions.length === 1 ? '' : 's') + '</span>';
+      summaryEl.className = 'summary visible';
+
+      renderSuggestions();
+    }
+
+    function onSuggestionsError(err) {
+      var btn = document.getElementById('btnSuggest');
+      btn.disabled = false;
+      btn.textContent = 'Suggest links';
+      showStatus('error', 'Error: ' + (err.message || err));
+    }
+
+    function showStatus(type, msg) {
+      var el = document.getElementById('status');
+      el.className = 'status visible ' + type;
+      el.textContent = msg;
+    }
+
+    function renderSuggestions() {
+      var container = document.getElementById('suggestions');
+      container.innerHTML = '';
+
+      allSuggestions.forEach(function(suggestion, idx) {
+        var card = document.createElement('div');
+        card.className = 'suggestion-card';
+        card.id = 'suggestion-' + idx;
+        card.addEventListener('click', (function(i) {
+          return function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
+            goToSuggestion(i);
+          };
+        })(idx));
+
+        var html = '';
+        html += '<div class="suggestion-excerpt">' + escHtml(suggestion.excerpt) + '</div>';
+        html += '<div class="suggestion-target">';
+        html += '<a href="' + escHtml(suggestion.targetUrl) + '" target="_blank">' + escHtml(suggestion.targetTitle) + '</a>';
+        html += '</div>';
+        html += '<div class="suggestion-reason">' + escHtml(suggestion.reason) + '</div>';
+
+        html += '<div class="suggestion-actions">';
+        html += '<button class="btn-sm btn-apply" onclick="applyLink(' + idx + ')">Apply link</button>';
+        html += '<button class="btn-sm btn-dismiss" onclick="dismissSuggestion(' + idx + ')">Dismiss</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    var lastHighlighted = null;
+
+    function goToSuggestion(idx) {
+      var suggestion = allSuggestions[idx];
+      if (!suggestion || !suggestion.excerpt) return;
+
+      var prevParagraphIndex = null;
+      var prevOriginal = null;
+      if (lastHighlighted !== null && lastHighlighted !== idx) {
+        var prev = allSuggestions[lastHighlighted];
+        if (prev && prev.excerpt) {
+          prevParagraphIndex = prev.paragraphIndex;
+          prevOriginal = prev.excerpt;
+        }
+      }
+      lastHighlighted = idx;
+
+      var card = document.getElementById('suggestion-' + idx);
+      if (card) card.style.opacity = '0.6';
+      google.script.run
+        .withSuccessHandler(function() {
+          if (card) card.style.opacity = '';
+        })
+        .withFailureHandler(function() { if (card) card.style.opacity = ''; })
+        .navigateToSuggestion(prevParagraphIndex, prevOriginal, suggestion.paragraphIndex, suggestion.excerpt);
+    }
+
+    function applyLink(idx) {
+      var suggestion = allSuggestions[idx];
+      if (!suggestion) return;
+
+      google.script.run
+        .withSuccessHandler(function(success) {
+          if (success) {
+            var card = document.getElementById('suggestion-' + idx);
+            if (card) card.className += ' applied';
+            // Clear highlight
+            if (lastHighlighted === idx) {
+              google.script.run.removeHighlight(suggestion.paragraphIndex, suggestion.excerpt);
+              lastHighlighted = null;
+            }
+          }
+        })
+        .applyLink(suggestion.paragraphIndex, suggestion.excerpt, suggestion.targetUrl);
+    }
+
+    function dismissSuggestion(idx) {
+      var card = document.getElementById('suggestion-' + idx);
+      if (card) card.className += ' dismissed';
+      var suggestion = allSuggestions[idx];
+      if (suggestion && suggestion.excerpt) {
+        google.script.run.removeHighlight(suggestion.paragraphIndex, suggestion.excerpt);
+      }
+      if (lastHighlighted === idx) lastHighlighted = null;
+    }
+
+    function clearResults() {
+      allSuggestions = [];
+      document.getElementById('suggestions').innerHTML = '';
+      document.getElementById('summary').className = 'summary';
+      document.getElementById('status').className = 'status';
+      document.getElementById('btnSuggest').textContent = 'Suggest links';
+      document.getElementById('btnClear').style.display = 'none';
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+
+</body>
+</html>

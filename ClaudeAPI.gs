@@ -77,6 +77,15 @@ function getLLMConfig_() {
   };
 }
 
+function getLinksLLMConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  return {
+    provider: props.getProperty('LINKS_PROVIDER') || 'anthropic',
+    model: props.getProperty('LINKS_MODEL') || '',
+    apiKey: props.getProperty('LINKS_API_KEY') || ''
+  };
+}
+
 /**
  * Run from the script editor to configure the LLM backend.
  *
@@ -329,11 +338,11 @@ var LINK_SUGGESTION_SYSTEM_PROMPT = [
 // ---------------------------------------------------------------------------
 
 function runLinkSuggestion(documentText, existingLinks) {
-  var config = getLLMConfig_();
+  var config = getLinksLLMConfig_();
   if (!config.apiKey) {
     return [{
       error: true,
-      message: 'LLM API key not configured. Ask the add-on admin to run configureLLM() in the script editor.'
+      message: 'Links API key not configured. Set LINKS_API_KEY in Script Properties.'
     }];
   }
 
@@ -492,11 +501,11 @@ var RELATED_WORK_SYSTEM_PROMPT = [
 ].join('\n');
 
 function runRelatedWorkSuggestion(documentText) {
-  var config = getLLMConfig_();
+  var config = getLinksLLMConfig_();
   if (!config.apiKey) {
     return [{
       error: true,
-      message: 'LLM API key not configured. Ask the add-on admin to run configureLLM() in the script editor.'
+      message: 'Links API key not configured. Set LINKS_API_KEY in Script Properties.'
     }];
   }
 

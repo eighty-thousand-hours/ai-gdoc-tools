@@ -31,8 +31,14 @@ function getDocumentImages() {
   var results = [];
   for (var i = 0; i < images.length; i++) {
     var image = images[i];
-    var parent = findImageParagraph_(image);
-    var parentIndex = parent ? paragraphs.indexOf(parent) : -1;
+
+    var parentIndex = -1;
+    try {
+      var parent = findImageParagraph_(image);
+      parentIndex = parent ? paragraphs.indexOf(parent) : -1;
+    } catch (e) {
+      parentIndex = -1;
+    }
 
     var surrounding = [];
     if (parentIndex >= 0) {
@@ -52,14 +58,45 @@ function getDocumentImages() {
       }
     }
 
+    // Each metadata accessor can throw "Invalid argument: imageId" for
+    // non-blob-backed images (linked charts, drawings, etc). Degrade
+    // gracefully so one bad image doesn't kill the scan.
+    var altDescription = '';
+    var contentType = '';
+    var width = null;
+    var height = null;
+    var unavailable = false;
+    var unavailableReason = '';
+
+    try {
+      altDescription = image.getAltDescription() || '';
+    } catch (e) {
+      unavailable = true;
+      unavailableReason = e.message;
+    }
+    try {
+      contentType = image.getBlob().getContentType();
+    } catch (e) {
+      unavailable = true;
+      unavailableReason = e.message;
+    }
+    try {
+      width = image.getWidth();
+    } catch (e) {}
+    try {
+      height = image.getHeight();
+    } catch (e) {}
+
     results.push({
       index: i,
-      altDescription: image.getAltDescription() || '',
-      contentType: image.getBlob().getContentType(),
-      width: image.getWidth(),
-      height: image.getHeight(),
+      altDescription: altDescription,
+      contentType: contentType,
+      width: width,
+      height: height,
       surroundingText: surrounding.join('\n'),
-      caption: caption
+      caption: caption,
+      unavailable: unavailable,
+      unavailableReason: unavailableReason
     });
   }
   return results;
@@ -99,7 +136,17 @@ function generateAltTextForImage(index) {
 
   var image = images[index];
   var meta = getDocumentImages()[index];
-  return runAltTextGeneration(image.getBlob(), meta.surroundingText, meta.caption);
+  if (meta && meta.unavailable) {
+    return { error: 'This image is a linked chart or drawing and cannot be processed: ' + (meta.unavailableReason || 'unknown reason') };
+  }
+
+  var blob;
+  try {
+    blob = image.getBlob();
+  } catch (e) {
+    return { error: 'Could not read image bytes: ' + e.message };
+  }
+  return runAltTextGeneration(blob, meta.surroundingText, meta.caption);
 }
 
 /**

@@ -329,6 +329,8 @@
     }
 
     function goToLink(idx) {
+      var link = links[idx];
+      if (!link) return;
       google.script.run
         .withSuccessHandler(function(ok) {
           if (!ok) showStatus('linkStatus', 'error', 'Could not locate the anchor text in the document.');
@@ -336,7 +338,7 @@
         .withFailureHandler(function(err) {
           showStatus('linkStatus', 'error', 'Navigate failed: ' + (err.message || err));
         })
-        .navigateToLink(idx);
+        .navigateToLink(link.paragraphIndex, link.anchorStart, link.anchorEnd, link.anchorText);
     }
 
     // -----------------------------------------------------------------------

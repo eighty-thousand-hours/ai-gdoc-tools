@@ -147,32 +147,31 @@ function verifyLink(index) {
 
 /**
  * Select the anchor text in the doc so the user can see which link this card
- * refers to. Uses the stored anchorStart position rather than indexOf so we
- * hit the right occurrence even when the anchor word appears elsewhere in
- * the paragraph.
+ * refers to. Takes the position directly from the sidebar (which stored it
+ * at enumeration time) so we can skip a full re-enumeration — that round-trip
+ * alone costs ~10-20s on a long document.
  */
-function navigateToLink(index) {
-  var links = getDocumentExternalLinks();
-  if (index < 0 || index >= links.length) return false;
-  var link = links[index];
+function navigateToLink(paragraphIndex, anchorStart, anchorEnd, anchorText) {
   var doc = DocumentApp.getActiveDocument();
   var body = doc.getBody();
   var paragraphs = body.getParagraphs();
-  if (link.paragraphIndex >= paragraphs.length) return false;
+  if (paragraphIndex == null || paragraphIndex >= paragraphs.length) return false;
 
-  var paragraph = paragraphs[link.paragraphIndex];
+  var paragraph = paragraphs[paragraphIndex];
   var textElement = paragraph.editAsText();
   var content = textElement.getText();
 
-  var start = link.anchorStart;
-  var end = link.anchorEnd;
-  // Guard against the document having shifted since enumeration.
+  var start = anchorStart;
+  var end = anchorEnd;
+  // Fall back to anchorText search if the position no longer lines up (the
+  // doc may have shifted since enumeration).
   if (start == null || end == null ||
       start < 0 || end > content.length ||
-      content.substring(start, end) !== link.anchorText) {
-    start = content.indexOf(link.anchorText);
+      content.substring(start, end) !== anchorText) {
+    if (!anchorText) return false;
+    start = content.indexOf(anchorText);
     if (start === -1) return false;
-    end = start + link.anchorText.length;
+    end = start + anchorText.length;
   }
 
   var range = doc.newRange()

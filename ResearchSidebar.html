@@ -132,9 +132,12 @@
     .finding-claim {
       font-size: 12px;
       font-style: italic;
-      color: #202124;
+      color: #1a73e8;
       margin-bottom: 6px;
+      cursor: pointer;
+      text-decoration: underline;
     }
+    .finding-claim:hover { color: #1557b0; }
     .finding-body { font-size: 13px; line-height: 1.4; }
     .finding-source {
       font-size: 11px;
@@ -379,11 +382,15 @@
 
       var container = document.getElementById('recencyResults');
       container.innerHTML = '';
-      findings.forEach(function(f) {
+      findings.forEach(function(f, fi) {
         var card = document.createElement('div');
         card.className = 'finding-card severity-' + (f.severity || 'update');
+        card.id = 'finding-' + fi;
         var html = '';
-        if (f.claim) html += '<div class="finding-claim">' + escHtml(f.claim) + '</div>';
+        if (f.claim) {
+          html += '<div class="finding-claim" onclick="goToClaim(' + fi + ')" title="Click to jump to this claim in the doc">' +
+            escHtml(f.claim) + '</div>';
+        }
         html += '<div class="finding-body">' + escHtml(f.finding || '') + '</div>';
         if (f.sourceUrl) {
           html += '<div class="finding-source"><a href="' + escHtml(f.sourceUrl) + '" target="_blank">' +
@@ -392,6 +399,22 @@
         card.innerHTML = html;
         container.appendChild(card);
       });
+      currentFindings = findings;
+    }
+
+    var currentFindings = [];
+
+    function goToClaim(fi) {
+      var f = currentFindings[fi];
+      if (!f || !f.claim) return;
+      google.script.run
+        .withSuccessHandler(function(ok) {
+          if (!ok) showStatus('recencyStatus', 'error', 'Could not find that claim text in the doc (it may have been paraphrased).');
+        })
+        .withFailureHandler(function(err) {
+          showStatus('recencyStatus', 'error', 'Navigate failed: ' + (err.message || err));
+        })
+        .navigateToClaim(f.claim);
     }
   </script>
 </body>

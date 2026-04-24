@@ -248,6 +248,45 @@ function decodeHtmlEntities_(s) {
 }
 
 // ---------------------------------------------------------------------------
+// Navigate to a recency-check claim
+// ---------------------------------------------------------------------------
+
+/**
+ * Find and select the given claim text in the document. Claude is told to
+ * quote from the draft but may paraphrase, so we fall back through
+ * progressively looser matches: full string → first 40 chars → first 20.
+ */
+function navigateToClaim(claimText) {
+  if (!claimText) return false;
+  var body = DocumentApp.getActiveDocument().getBody();
+  var paragraphs = body.getParagraphs();
+
+  var attempts = [
+    claimText,
+    claimText.substring(0, 60),
+    claimText.substring(0, 40),
+    claimText.substring(0, 25)
+  ];
+
+  for (var a = 0; a < attempts.length; a++) {
+    var needle = attempts[a].trim();
+    if (needle.length < 12) continue;
+    for (var p = 0; p < paragraphs.length; p++) {
+      var textElement = paragraphs[p].editAsText();
+      var content = textElement.getText();
+      var idx = content.indexOf(needle);
+      if (idx === -1) continue;
+      var range = DocumentApp.getActiveDocument().newRange()
+        .addElement(textElement, idx, idx + needle.length - 1)
+        .build();
+      DocumentApp.getActiveDocument().setSelection(range);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Recency check
 // ---------------------------------------------------------------------------
 

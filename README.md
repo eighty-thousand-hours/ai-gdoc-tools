@@ -1,12 +1,15 @@
 # epoch-ai-addon
 
-Google Docs add-on for Epoch AI. Provides editorial style checking, internal link suggestions, and related article suggestions via sidebar UIs.
+Google Docs add-on for Epoch AI. Provides editorial style checking, internal link suggestions, related article suggestions, link verification, recency checks, alt-text generation, and metadata auto-fill via sidebar UIs.
 
 ## What it does
 
 - **Style checker**: Scans documents against Epoch's [style guide](https://docs.google.com/document/d/1pDrkYgftq0kAF16pVpWbSsGiwXsca4O6IF-kR2hc1TU/) (v3.0). ~97 deterministic rules + LLM-powered suggestions for tone, hedging, clarity, voice, precision, and structure.
-- **Internal link suggestions**: Sends document text + 301-entry site catalog to Claude, suggests inline links to relevant Epoch publications (blog posts, data insights, newsletters, benchmark pages).
+- **Internal link suggestions**: Sends document text + site catalog to Claude, suggests inline links to relevant Epoch publications.
 - **Related articles**: Suggests publications for the relatedWork frontmatter.
+- **Research helper**: Verifies that each external hyperlink in the document actually supports the claim in the surrounding sentence (fetches the target page, asks Claude to compare), and runs a recency check that uses Claude's web-search tool to flag claims that may have been contradicted or updated in the last 14 days.
+- **Generate alt text**: Enumerates every image in the document and produces short, one-sentence HTML alt descriptions suitable for audio narrations. Review and edit in the sidebar before applying.
+- **Generate metadata**: Finds the Metadata table (prefers a "Metadata" tab) and auto-fills Tags (from the canonical site tag list), HTML title, and HTML meta.
 
 ## Files
 
@@ -14,10 +17,16 @@ Google Docs add-on for Epoch AI. Provides editorial style checking, internal lin
 |---|---|
 | `Code.gs` | Entry point: menu registration, document reading, fix/link application |
 | `StyleRules.gs` | Deterministic rule engine (~65 glossary, ~24 formatting, ~8 math rules) |
-| `ClaudeAPI.gs` | LLM integration (Anthropic and OpenAI): style checking, link suggestions, related work |
+| `ClaudeAPI.gs` | LLM integration (Anthropic and OpenAI): style check, link suggestions, related work, alt text, link verification, recency check, metadata |
 | `Catalog.gs` | Site catalog (auto-generated from `full-catalog.json` in internal-linking-automation) |
+| `ImageTools.gs` | Image enumeration + alt-text application |
+| `ResearchHelper.gs` | External-link enumeration, URL fetching + HTML stripping, recency-check driver |
+| `MetadataTools.gs` | Metadata table location + apply logic, canonical tag extraction |
 | `Sidebar.html` | Style checker sidebar UI |
 | `LinksSidebar.html` | Internal links + related articles sidebar UI |
+| `AltTextSidebar.html` | Alt-text generation sidebar UI |
+| `ResearchSidebar.html` | Research helper sidebar UI (link verification + recency check tabs) |
+| `MetadataSidebar.html` | Metadata generation sidebar UI |
 | `appsscript.json` | Apps Script manifest and OAuth scopes |
 
 ## Setup

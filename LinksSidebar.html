@@ -383,18 +383,23 @@
 
     var lastHighlighted = null;
 
+    function suggestionRef(s) {
+      if (!s) return null;
+      return {
+        paragraphIndex: s.paragraphIndex,
+        original: s.excerpt,
+        matchStart: s.matchStart,
+        matchEnd: s.matchEnd
+      };
+    }
+
     function goToSuggestion(idx) {
       var suggestion = allSuggestions[idx];
       if (!suggestion || !suggestion.excerpt) return;
 
-      var prevParagraphIndex = null;
-      var prevOriginal = null;
+      var prev = null;
       if (lastHighlighted !== null && lastHighlighted !== idx) {
-        var prev = allSuggestions[lastHighlighted];
-        if (prev && prev.excerpt) {
-          prevParagraphIndex = prev.paragraphIndex;
-          prevOriginal = prev.excerpt;
-        }
+        prev = suggestionRef(allSuggestions[lastHighlighted]);
       }
       lastHighlighted = idx;
 
@@ -405,7 +410,7 @@
           if (card) card.style.opacity = '';
         })
         .withFailureHandler(function() { if (card) card.style.opacity = ''; })
-        .navigateToSuggestion(prevParagraphIndex, prevOriginal, suggestion.paragraphIndex, suggestion.excerpt);
+        .navigateToSuggestion(prev, suggestionRef(suggestion));
     }
 
     function applyLink(idx) {
@@ -417,14 +422,13 @@
           if (success) {
             var card = document.getElementById('suggestion-' + idx);
             if (card) card.className += ' applied';
-            // Clear highlight
             if (lastHighlighted === idx) {
-              google.script.run.removeHighlight(suggestion.paragraphIndex, suggestion.excerpt);
+              google.script.run.removeHighlight(suggestion.paragraphIndex, suggestion.excerpt, suggestion.matchStart, suggestion.matchEnd);
               lastHighlighted = null;
             }
           }
         })
-        .applyLink(suggestion.paragraphIndex, suggestion.excerpt, suggestion.targetUrl);
+        .applyLink(suggestion.paragraphIndex, suggestion.excerpt, suggestion.targetUrl, suggestion.matchStart, suggestion.matchEnd);
     }
 
     function dismissSuggestion(idx) {

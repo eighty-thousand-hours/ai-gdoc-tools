@@ -515,31 +515,34 @@
 
     var lastHighlighted = null;
 
+    function issueRef(issue) {
+      if (!issue) return null;
+      return {
+        paragraphIndex: issue.paragraphIndex,
+        original: issue.original,
+        matchStart: issue.matchStart,
+        matchEnd: issue.matchEnd
+      };
+    }
+
     function goToIssue(idx) {
       var issue = allIssues[idx];
       if (!issue || !issue.original) return;
 
-      // Gather previous highlight info
-      var prevParagraphIndex = null;
-      var prevOriginal = null;
+      var prev = null;
       if (lastHighlighted !== null && lastHighlighted !== idx) {
-        var prev = allIssues[lastHighlighted];
-        if (prev && prev.original) {
-          prevParagraphIndex = prev.paragraphIndex;
-          prevOriginal = prev.original;
-        }
+        prev = issueRef(allIssues[lastHighlighted]);
       }
       lastHighlighted = idx;
 
       var card = document.getElementById('issue-' + idx);
       if (card) card.style.opacity = '0.6';
-      // Single server call: clear old highlight + highlight new + scroll
       google.script.run
         .withSuccessHandler(function() {
           if (card) card.style.opacity = '';
         })
         .withFailureHandler(function() { if (card) card.style.opacity = ''; })
-        .navigateToIssue(prevParagraphIndex, prevOriginal, issue.paragraphIndex, issue.original);
+        .navigateToIssue(prev, issueRef(issue));
     }
 
     function applyFix(idx) {
@@ -554,23 +557,21 @@
             if (lastHighlighted === idx) lastHighlighted = null;
           }
         })
-        .applyFix(issue.paragraphIndex, issue.original, issue.suggestion);
+        .applyFix(issue.paragraphIndex, issue.original, issue.suggestion, issue.matchStart, issue.matchEnd);
     }
 
     function highlightIssue(idx) {
       var issue = allIssues[idx];
       if (!issue || !issue.original) return;
-
-      google.script.run.highlightText(issue.paragraphIndex, issue.original, '#F4CCCC');
+      google.script.run.highlightText(issue.paragraphIndex, issue.original, '#F4CCCC', issue.matchStart, issue.matchEnd);
     }
 
     function dismissIssue(idx) {
       var card = document.getElementById('issue-' + idx);
       if (card) card.className += ' dismissed';
-      // Remove highlight if it was applied
       var issue = allIssues[idx];
       if (issue && issue.original) {
-        google.script.run.removeHighlight(issue.paragraphIndex, issue.original);
+        google.script.run.removeHighlight(issue.paragraphIndex, issue.original, issue.matchStart, issue.matchEnd);
       }
     }
 

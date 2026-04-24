@@ -110,18 +110,33 @@ var FORMATTING_RULES = [
   },
   {
     id: 'fmt-leading-zero',
-    pattern: /(?<!\d)\.\d+%/g,
+    pattern: /(?<!\d)(\.\d+%)/g,
     message: 'Add a leading zero before decimal points (e.g. "0.4%" not ".4%").',
+    suggestion: function(match) { return '0' + match[1]; },
     severity: 'warning',
     category: 'formatting'
   },
   {
     id: 'fmt-decade-apostrophe',
-    pattern: /\b(\d{4})'s\b/g,
-    message: 'No apostrophe in decades. Write "1920s" not "1920\'s".',
+    // Only flag plausible decade years (1700–2099) and only when the
+    // surrounding context suggests a decade rather than a possessive
+    // ("the 1920's saw …" is a decade; "1990's population" is possessive).
+    pattern: /\b(1[7-9]\d\d|20\d\d)'s\b/g,
+    message: 'Looks like a decade written with an apostrophe. Decades should be "1920s", not "1920\'s". (Ignore if this is a possessive.)',
     suggestion: function(match) { return match[1] + 's'; },
-    severity: 'warning',
-    category: 'formatting'
+    severity: 'info',
+    category: 'formatting',
+    test: function(match, ctx) {
+      var before = ctx.text.substring(Math.max(0, match.index - 10), match.index).toLowerCase();
+      var after = ctx.text.substring(match.index + match[0].length, match.index + match[0].length + 20).toLowerCase();
+      // Strong signal it's a decade: "the 19X0's", "in the 19X0's", "during the …"
+      if (/\b(the|in|during|throughout|by|since|by the|in the|of the)\s*$/.test(before)) return true;
+      // Strong signal it's possessive: immediately followed by a noun-ish token
+      // (economy, population, share, approach, release, …). We don't enumerate
+      // exhaustively — any lowercase word after " " is treated as possessive.
+      if (/^\s+[a-z]/.test(after)) return false;
+      return true;
+    }
   },
   {
     id: 'fmt-ellipsis-dots',
@@ -133,8 +148,10 @@ var FORMATTING_RULES = [
   },
   {
     id: 'fmt-double-space',
-    pattern: /\S  +\S/g,
+    // Capture the sequence so we can suggest a single-space replacement.
+    pattern: /(\S)( {2,})(\S)/g,
     message: 'Double space detected. Use a single space.',
+    suggestion: function(match) { return match[1] + ' ' + match[3]; },
     severity: 'error',
     category: 'formatting'
   },
@@ -142,13 +159,18 @@ var FORMATTING_RULES = [
     id: 'fmt-exclamation',
     pattern: /!(?![\])])/g,
     message: 'Avoid exclamation points in Epoch content.',
+    suggestion: '.',
     severity: 'info',
     category: 'formatting'
   },
   {
     id: 'fmt-timezone-specific',
-    pattern: /\b(?:EST|EDT|CST|CDT|PST|PDT|MST|MDT|CEST)\b/g,
+    pattern: /\b(EST|EDT|CST|CDT|PST|PDT|MST|MDT|CEST)\b/g,
     message: 'Use year-round timezone abbreviation: ET (not EST/EDT), CET (not CEST), PT (not PST/PDT).',
+    suggestion: function(match) {
+      var map = { EST: 'ET', EDT: 'ET', CST: 'CT', CDT: 'CT', PST: 'PT', PDT: 'PT', MST: 'MT', MDT: 'MT', CEST: 'CET' };
+      return map[match[1]] || match[0];
+    },
     severity: 'info',
     category: 'formatting'
   },
@@ -156,10 +178,12 @@ var FORMATTING_RULES = [
     id: 'fmt-figure-lowercase',
     pattern: /\b(figure|table|section|chapter|appendix)\s+(\d+)/gi,
     message: 'Capitalize when numbered: "Figure 3", "Table 1", "Section 2".',
+    suggestion: function(match) {
+      return match[1].charAt(0).toUpperCase() + match[1].slice(1) + ' ' + match[2];
+    },
     severity: 'warning',
     category: 'formatting',
     test: function(match) {
-      // Only flag if the first letter is actually lowercase
       return match[1].charAt(0) === match[1].charAt(0).toLowerCase();
     }
   },
@@ -173,13 +197,36 @@ var FORMATTING_RULES = [
   },
   {
     id: 'fmt-abbreviated-units',
-    pattern: /\b(\d+(?:\.\d+)?)\s*([MBT])\b(?!\w)/g,
-    message: 'In running text, write out units: "5 million", "3 billion", "2 trillion". Abbreviations (M, B, T) only in tables and figures.',
+    // Cover k/M/B/T. Lookbehind so the leading whitespace/bracket doesn't
+    // end up in match[0]. Trailing lookahead keeps "Mbps", "Tb", etc. out.
+    pattern: /(?<=^|[\s(\[])(\d+(?:\.\d+)?)\s*([kMBT])(?=[\s.,;:)\]!?]|$)/g,
+    message: 'In running text, write out units: "5 thousand", "5 million", "3 billion", "2 trillion". Abbreviations only in tables and figures.',
+    skipInTable: true,
     severity: 'warning',
     category: 'formatting',
     suggestion: function(match) {
-      var units = { M: ' million', B: ' billion', T: ' trillion' };
+      var units = { k: ' thousand', M: ' million', B: ' billion', T: ' trillion' };
       return match[1] + (units[match[2]] || match[2]);
+    },
+    test: function(match, ctx) {
+      // Skip model-parameter contexts (Llama 3.2 1B / 70B, GPT-4 175B, etc.)
+      // by looking at the 60 chars preceding the match for a model-name signal
+      // or at the 30 chars after for "parameter"/"param"/"model"/"weights".
+      var fullStart = match.index;
+      var before = ctx.text.substring(Math.max(0, fullStart - 60), fullStart);
+      var after = ctx.text.substring(fullStart + match[0].length, fullStart + match[0].length + 40);
+
+      // Allow trailing whitespace *or* hyphen so "Llama-3.2-1B" is recognized.
+      var modelBefore = /(Llama|LLaMa|GPT|Claude|Gemini|Mistral|DeepSeek|PaLM|Qwen|Phi|Falcon|Mixtral|Yi|Command[- ]?R?|Grok|Nemotron|Granite)[\s-]*\d*\.?\d*[\s-]*$/i;
+      if (modelBefore.test(before)) return false;
+
+      var paramAfter = /^\s*(parameter|param|model|weights|MoE|dense|active|context|token)s?\b/i;
+      if (paramAfter.test(after)) return false;
+
+      // Also skip if the preceding word ends with a hyphen attached to a model
+      // family (e.g. "Llama-3.2-1B"). We catch that by allowing the modelBefore
+      // regex to accept dashes.
+      return true;
     }
   },
   {
@@ -200,8 +247,9 @@ var FORMATTING_RULES = [
   },
   {
     id: 'fmt-punctuation-inside-quotes',
-    pattern: /[,.]"/g,
+    pattern: /([,.])"/g,
     message: 'Epoch style: punctuation goes outside quotation marks unless it\'s part of the quoted material.',
+    suggestion: function(match) { return '"' + match[1]; },
     severity: 'info',
     category: 'formatting'
   },
@@ -209,6 +257,28 @@ var FORMATTING_RULES = [
     id: 'fmt-contractions',
     pattern: /\b(can't|won't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|couldn't|wouldn't|shouldn't|it's|we're|they're|I'm|we've|they've|we'll|they'll|he's|she's|that's|there's|let's)\b/gi,
     message: 'Avoid contractions in formal content (papers, reports). Permitted in blog posts and social media.',
+    suggestion: function(match) {
+      var map = {
+        "can't": 'cannot', "won't": 'will not', "don't": 'do not',
+        "doesn't": 'does not', "didn't": 'did not', "isn't": 'is not',
+        "aren't": 'are not', "wasn't": 'was not', "weren't": 'were not',
+        "hasn't": 'has not', "haven't": 'have not', "hadn't": 'had not',
+        "couldn't": 'could not', "wouldn't": 'would not', "shouldn't": 'should not',
+        "it's": 'it is', "we're": 'we are', "they're": 'they are',
+        "i'm": 'I am', "we've": 'we have', "they've": 'they have',
+        "we'll": 'we will', "they'll": 'they will', "he's": 'he is',
+        "she's": 'she is', "that's": 'that is', "there's": 'there is',
+        "let's": 'let us'
+      };
+      var key = match[1].toLowerCase();
+      var expansion = map[key];
+      if (!expansion) return null;
+      // Preserve initial capitalization of the original token.
+      if (/^[A-Z]/.test(match[1])) {
+        expansion = expansion.charAt(0).toUpperCase() + expansion.slice(1);
+      }
+      return expansion;
+    },
     severity: 'info',
     category: 'formatting'
   },
@@ -221,8 +291,9 @@ var FORMATTING_RULES = [
   },
   {
     id: 'fmt-space-before-percent',
-    pattern: /\d\s+%/g,
+    pattern: /(\d)\s+%/g,
     message: 'No space before "%". Write "48%" not "48 %".',
+    suggestion: function(match) { return match[1] + '%'; },
     severity: 'error',
     category: 'formatting'
   },
@@ -254,6 +325,11 @@ var FORMATTING_RULES = [
     id: 'fmt-noon-midnight',
     pattern: /\b12(?::00)?\s*(a\.m\.|p\.m\.|am|pm|AM|PM)/g,
     message: 'Use "noon" for 12 p.m. and "midnight" for 12 a.m.',
+    suggestion: function(match) {
+      var m = match[1].toLowerCase();
+      if (m === 'am' || m === 'a.m.') return 'midnight';
+      return 'noon';
+    },
     severity: 'info',
     category: 'formatting'
   },
@@ -288,12 +364,18 @@ var FORMATTING_RULES = [
     id: 'fmt-ampersand',
     pattern: /\s&\s/g,
     message: 'Avoid ampersands in running text. Write "and" instead (exception: R&D, organization names).',
+    suggestion: ' and ',
     severity: 'info',
-    category: 'formatting',
-    test: function(match) {
-      // Don't flag R&D
-      return true; // We'll rely on context; R&D is handled by not having spaces
-    }
+    category: 'formatting'
+  },
+  {
+    id: 'fmt-eg-ie-comma',
+    // "e.g." or "i.e." not followed by a comma, closing punct, or end of run
+    pattern: /\b(e\.g\.|i\.e\.)(?![,;:)])/g,
+    message: 'Add a comma after "e.g." / "i.e.": "e.g.,".',
+    suggestion: function(match) { return match[1] + ','; },
+    severity: 'warning',
+    category: 'formatting'
   }
 ];
 
@@ -422,7 +504,32 @@ function buildGlossaryRules_() {
   return rules;
 }
 
-function checkParagraph(text, paragraphIndex) {
+/**
+ * Walk the paragraph's ancestor chain to decide whether it lives inside a
+ * table cell. Apps Script's body.getParagraphs() returns *all* paragraphs
+ * including those inside tables, so rules that don't apply in tables
+ * (abbreviated units, double-spacing of tabular data, etc) need to check.
+ */
+function isParagraphInTable_(paragraph) {
+  if (!paragraph) return false;
+  try {
+    var el = paragraph.getParent && paragraph.getParent();
+    while (el) {
+      var type = el.getType && el.getType();
+      if (type === DocumentApp.ElementType.TABLE_CELL ||
+          type === DocumentApp.ElementType.TABLE) {
+        return true;
+      }
+      if (!el.getParent) return false;
+      el = el.getParent();
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
+}
+
+function checkParagraph(text, paragraphIndex, paragraph) {
   var issues = [];
   var allRules = [].concat(
     buildGlossaryRules_(),
@@ -430,9 +537,18 @@ function checkParagraph(text, paragraphIndex) {
     MATH_RULES
   );
 
+  var ctx = {
+    paragraph: paragraph,
+    paragraphIndex: paragraphIndex,
+    text: text,
+    inTable: isParagraphInTable_(paragraph)
+  };
+
   for (var r = 0; r < allRules.length; r++) {
     var rule = allRules[r];
     var pattern = rule.pattern;
+
+    if (rule.skipInTable && ctx.inTable) continue;
 
     if (pattern.global) {
       pattern.lastIndex = 0;
@@ -441,14 +557,14 @@ function checkParagraph(text, paragraphIndex) {
     var match;
     if (pattern.global) {
       while ((match = pattern.exec(text)) !== null) {
-        if (rule.test && !rule.test(match)) continue;
+        if (rule.test && !rule.test(match, ctx)) continue;
         var issue = buildIssue_(rule, match, paragraphIndex);
         if (issue) issues.push(issue);
       }
     } else {
       match = pattern.exec(text);
       if (match) {
-        if (!rule.test || rule.test(match)) {
+        if (!rule.test || rule.test(match, ctx)) {
           var issue = buildIssue_(rule, match, paragraphIndex);
           if (issue) issues.push(issue);
         }

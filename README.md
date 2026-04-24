@@ -64,6 +64,13 @@ LLM features require an API key configured in Script Properties:
 
 Set these in the Apps Script editor: Project Settings → Script Properties.
 
+## Testing
+
+Two Google Docs are maintained for manual regression testing:
+
+- **Kitchen sink** — [doc `1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk`](https://docs.google.com/document/d/1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk/edit). Exhaustive per-rule test cases for the Style checker. **Whenever a new rule is added to `StyleRules.gs`, add a matching test case here.** Also the Google Doc that hosts the container-bound dev script, so `clasp push` against `.clasp.json.container-bound` updates this doc directly.
+- **Sample doc** — [doc `1YyIzaG3r6hdiA4LL3p9ENb5KsBiB2zusKNVcjT7w7AI`](https://docs.google.com/document/d/1YyIzaG3r6hdiA4LL3p9ENb5KsBiB2zusKNVcjT7w7AI/edit). Realistic doc with images, external hyperlinks, footnotes, and tables — used for end-to-end testing of Research helper, Alt text, the footnote/link-preserving Apply, and the table-skip logic.
+
 ## Known limitations
 
 - Multi-login (multiple Google accounts in the same Chrome session) causes `PERMISSION_DENIED` errors. Use incognito or a single-account Chrome profile.

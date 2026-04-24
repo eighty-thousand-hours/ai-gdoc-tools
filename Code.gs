@@ -99,12 +99,15 @@ function getDocumentText() {
 
 function runChecks(options) {
   options = options || {};
-  var paragraphs = getDocumentParagraphs();
+  var body = DocumentApp.getActiveDocument().getBody();
+  var paragraphs = body.getParagraphs();
   var issues = [];
 
   for (var i = 0; i < paragraphs.length; i++) {
-    var p = paragraphs[i];
-    var ruleIssues = checkParagraph(p.text, p.paragraphIndex);
+    var paragraph = paragraphs[i];
+    var text = paragraph.getText();
+    if (text.trim() === '') continue;
+    var ruleIssues = checkParagraph(text, i, paragraph);
     issues = issues.concat(ruleIssues);
   }
 
@@ -144,78 +147,134 @@ function runChecks(options) {
 // Applying fixes
 // ---------------------------------------------------------------------------
 
-function applyFix(paragraphIndex, original, replacement) {
+/**
+ * Resolve the character range of an issue in a paragraph. Prefers the stored
+ * matchStart/matchEnd (captured at check time) so we always hit the right
+ * occurrence even when the same string appears multiple times in the
+ * paragraph. Falls back to indexOf(original) only if the stored range no
+ * longer matches — that covers the case where the user has edited the doc
+ * since the check ran.
+ */
+function resolveRange_(paragraph, original, matchStart, matchEnd) {
+  var text = paragraph.getText();
+  if (matchStart != null && matchEnd != null &&
+      matchStart >= 0 && matchEnd <= text.length &&
+      text.substring(matchStart, matchEnd) === original) {
+    return { start: matchStart, end: matchEnd };
+  }
+  if (!original) return null;
+  var idx = text.indexOf(original);
+  if (idx === -1) return null;
+  return { start: idx, end: idx + original.length };
+}
+
+/**
+ * Replace a span of text in a paragraph with the replacement string, while
+ * preserving footnotes, hyperlinks, and text formatting on the parts that
+ * didn't actually change. Works by computing the longest common prefix and
+ * suffix between original and replacement and only editing the delta in the
+ * middle. Most editorial fixes (add comma, change symbol, drop periods)
+ * touch only a few characters, so the surrounding links/footnotes survive.
+ */
+function applyFix(paragraphIndex, original, replacement, matchStart, matchEnd) {
   var body = DocumentApp.getActiveDocument().getBody();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
   var paragraph = paragraphs[paragraphIndex];
-  var text = paragraph.getText();
-  var idx = text.indexOf(original);
-  if (idx === -1) return false;
+  var range = resolveRange_(paragraph, original, matchStart, matchEnd);
+  if (!range) return false;
+
+  // Longest common prefix
+  var pre = 0;
+  var maxPre = Math.min(original.length, replacement.length);
+  while (pre < maxPre && original.charAt(pre) === replacement.charAt(pre)) pre++;
+
+  // Longest common suffix (not overlapping the prefix we already found)
+  var suf = 0;
+  var maxSuf = Math.min(original.length - pre, replacement.length - pre);
+  while (suf < maxSuf &&
+         original.charAt(original.length - 1 - suf) === replacement.charAt(replacement.length - 1 - suf)) {
+    suf++;
+  }
+
+  var deltaStart = range.start + pre;
+  var deltaEnd = range.end - suf; // exclusive
+  var insertion = replacement.substring(pre, replacement.length - suf);
 
   var textElement = paragraph.editAsText();
-  textElement.deleteText(idx, idx + original.length - 1);
-  textElement.insertText(idx, replacement);
+  // Remember attributes at the character just before the delta so the
+  // inserted text inherits them (style matches the surrounding run).
+  var attrAnchor = deltaStart > 0 ? deltaStart - 1 : null;
+  var inheritedUrl = attrAnchor != null ? textElement.getLinkUrl(attrAnchor) : null;
+
+  if (deltaEnd > deltaStart) {
+    textElement.deleteText(deltaStart, deltaEnd - 1);
+  }
+  if (insertion) {
+    textElement.insertText(deltaStart, insertion);
+    if (inheritedUrl) {
+      textElement.setLinkUrl(deltaStart, deltaStart + insertion.length - 1, inheritedUrl);
+    }
+  }
   return true;
 }
 
-function highlightText(paragraphIndex, original, color) {
+function highlightText(paragraphIndex, original, color, matchStart, matchEnd) {
   var body = DocumentApp.getActiveDocument().getBody();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
   var paragraph = paragraphs[paragraphIndex];
-  var text = paragraph.getText();
-  var idx = text.indexOf(original);
-  if (idx === -1) return false;
+  var range = resolveRange_(paragraph, original, matchStart, matchEnd);
+  if (!range) return false;
 
-  paragraph.editAsText().setBackgroundColor(idx, idx + original.length - 1, color);
+  paragraph.editAsText().setBackgroundColor(range.start, range.end - 1, color);
   return true;
 }
 
-function removeHighlight(paragraphIndex, original) {
-  return highlightText(paragraphIndex, original, '#ffffff');
+function removeHighlight(paragraphIndex, original, matchStart, matchEnd) {
+  return highlightText(paragraphIndex, original, '#ffffff', matchStart, matchEnd);
 }
 
 /**
  * Highlight text with a background color and select it to scroll into view.
  */
-function highlightAndSelect(paragraphIndex, original) {
-  highlightText(paragraphIndex, original, '#F4CCCC');
-  return selectText(paragraphIndex, original);
+function highlightAndSelect(paragraphIndex, original, matchStart, matchEnd) {
+  highlightText(paragraphIndex, original, '#F4CCCC', matchStart, matchEnd);
+  return selectText(paragraphIndex, original, matchStart, matchEnd);
 }
 
 /**
  * Clear previous highlight + highlight and scroll to new issue in a single server call.
  */
-function navigateToIssue(prevParagraphIndex, prevOriginal, newParagraphIndex, newOriginal) {
-  if (prevOriginal) {
-    highlightText(prevParagraphIndex, prevOriginal, '#ffffff');
+function navigateToIssue(prev, next) {
+  if (prev && prev.original) {
+    highlightText(prev.paragraphIndex, prev.original, '#ffffff', prev.matchStart, prev.matchEnd);
   }
-  highlightText(newParagraphIndex, newOriginal, '#F4CCCC');
-  return selectText(newParagraphIndex, newOriginal);
+  if (!next) return false;
+  highlightText(next.paragraphIndex, next.original, '#F4CCCC', next.matchStart, next.matchEnd);
+  return selectText(next.paragraphIndex, next.original, next.matchStart, next.matchEnd);
 }
 
 /**
  * Select the matched text in the document, scrolling the viewport to it.
  */
-function selectText(paragraphIndex, original) {
+function selectText(paragraphIndex, original, matchStart, matchEnd) {
   var doc = DocumentApp.getActiveDocument();
   var body = doc.getBody();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
   var paragraph = paragraphs[paragraphIndex];
-  var text = paragraph.getText();
-  var idx = text.indexOf(original);
-  if (idx === -1) return false;
+  var range = resolveRange_(paragraph, original, matchStart, matchEnd);
+  if (!range) return false;
 
   var textElement = paragraph.editAsText();
-  var range = doc.newRange()
-    .addElement(textElement, idx, idx + original.length - 1)
+  var docRange = doc.newRange()
+    .addElement(textElement, range.start, range.end - 1)
     .build();
-  doc.setSelection(range);
+  doc.setSelection(docRange);
   return true;
 }
 
@@ -269,31 +328,32 @@ function suggestLinks() {
 }
 
 /**
- * Wrap a text span in a hyperlink.
+ * Wrap a text span in a hyperlink. Uses the stored matchStart/matchEnd so we
+ * target the right occurrence even when the excerpt appears multiple times.
  */
-function applyLink(paragraphIndex, linkText, url) {
+function applyLink(paragraphIndex, linkText, url, matchStart, matchEnd) {
   var body = DocumentApp.getActiveDocument().getBody();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
   var paragraph = paragraphs[paragraphIndex];
-  var text = paragraph.getText();
-  var idx = text.indexOf(linkText);
-  if (idx === -1) return false;
+  var range = resolveRange_(paragraph, linkText, matchStart, matchEnd);
+  if (!range) return false;
 
-  paragraph.editAsText().setLinkUrl(idx, idx + linkText.length - 1, url);
+  paragraph.editAsText().setLinkUrl(range.start, range.end - 1, url);
   return true;
 }
 
 /**
  * Clear previous highlight + highlight and scroll to new link suggestion.
  */
-function navigateToSuggestion(prevParagraphIndex, prevOriginal, newParagraphIndex, newOriginal) {
-  if (prevOriginal) {
-    highlightText(prevParagraphIndex, prevOriginal, '#ffffff');
+function navigateToSuggestion(prev, next) {
+  if (prev && prev.original) {
+    highlightText(prev.paragraphIndex, prev.original, '#ffffff', prev.matchStart, prev.matchEnd);
   }
-  highlightText(newParagraphIndex, newOriginal, '#D4EDDA');
-  return selectText(newParagraphIndex, newOriginal);
+  if (!next) return false;
+  highlightText(next.paragraphIndex, next.original, '#D4EDDA', next.matchStart, next.matchEnd);
+  return selectText(next.paragraphIndex, next.original, next.matchStart, next.matchEnd);
 }
 
 // ---------------------------------------------------------------------------

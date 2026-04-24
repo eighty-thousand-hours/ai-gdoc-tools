@@ -182,6 +182,7 @@
     var links = [];
     var verifying = false;
     var stopRequested = false;
+    var inFlightCount = 0;
     var CONCURRENCY = 5;
 
     function switchTab(name) {
@@ -241,18 +242,20 @@
 
     /**
      * Simple bounded concurrency pool. Keeps CONCURRENCY verifications in
-     * flight. Each slot, when free, pulls the next unverified link.
+     * flight. Each slot, when free, pulls the next unverified link. On stop
+     * we can't actually cancel google.script.run calls — we just stop
+     * launching new ones and wait for the in-flight ones to return.
      */
     function runPool() {
       var cursor = 0;
       var completed = 0;
-      var active = 0;
+      inFlightCount = 0;
 
       function startNext() {
         if (stopRequested) return finishIfDone();
         if (cursor >= links.length) return finishIfDone();
         var idx = cursor++;
-        active++;
+        inFlightCount++;
         links[idx].state = 'running';
         renderLinks();
 
@@ -271,19 +274,26 @@
       }
 
       function onVerifyReturn() {
-        active--;
+        inFlightCount--;
         completed++;
         renderLinks();
-        showStatus('linkStatus', 'running', 'Verifying ' + completed + '/' + links.length + '...');
-        if (!stopRequested) startNext();
-        else finishIfDone();
+        if (stopRequested) {
+          showStatus('linkStatus', 'running', 'Stopping — waiting for ' + inFlightCount + ' in-flight verification' + (inFlightCount === 1 ? '' : 's') + '…');
+          finishIfDone();
+        } else {
+          showStatus('linkStatus', 'running', 'Verifying ' + completed + '/' + links.length + '…');
+          startNext();
+        }
       }
 
       function finishIfDone() {
-        if (active === 0) {
+        if (inFlightCount === 0) {
           verifying = false;
           document.getElementById('btnLinks').disabled = false;
-          document.getElementById('btnLinksStop').style.display = 'none';
+          var stopBtn = document.getElementById('btnLinksStop');
+          stopBtn.style.display = 'none';
+          stopBtn.disabled = false;
+          stopBtn.textContent = 'Stop';
           var done = links.filter(function(l) { return l.verdict; }).length;
           showStatus('linkStatus', 'done', done + '/' + links.length + ' verified' +
             (stopRequested ? ' (stopped)' : '') + '.');
@@ -295,7 +305,12 @@
     }
 
     function stopLinkVerification() {
+      if (stopRequested) return;
       stopRequested = true;
+      var stopBtn = document.getElementById('btnLinksStop');
+      stopBtn.disabled = true;
+      stopBtn.textContent = 'Stopping…';
+      showStatus('linkStatus', 'running', 'Stopping — waiting for ' + inFlightCount + ' in-flight verification' + (inFlightCount === 1 ? '' : 's') + '…');
     }
 
     function renderLinks() {

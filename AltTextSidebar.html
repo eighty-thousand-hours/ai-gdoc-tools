@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .header { margin-bottom: 16px; }
+    .header h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+    .header .subtitle { font-size: 12px; color: #5f6368; }
+
+    .controls { display: flex; gap: 8px; margin-bottom: 16px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled { background: #dadce0; color: #80868b; cursor: default; }
+    .btn-secondary { background: #fff; color: #1a73e8; border: 1px solid #dadce0; }
+    .btn-secondary:hover { background: #f1f3f4; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .empty-state { padding: 32px 16px; text-align: center; color: #5f6368; font-size: 13px; }
+    .empty-state .icon { font-size: 32px; margin-bottom: 8px; color: #dadce0; }
+
+    .image-card {
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #fff;
+    }
+    .image-card.applied { background: #e6f4ea; border-color: #137333; }
+    .image-card.pending { background: #fff8e1; border-color: #f9ab00; }
+    .image-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #5f6368;
+      margin-bottom: 8px;
+    }
+    .image-label {
+      cursor: pointer;
+      color: #1a73e8;
+    }
+    .image-label:hover { text-decoration: underline; }
+    .image-context {
+      font-size: 11px;
+      color: #5f6368;
+      background: #f8f9fa;
+      padding: 6px 8px;
+      border-radius: 3px;
+      margin-bottom: 8px;
+      max-height: 60px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.4;
+    }
+    .alt-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #5f6368;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .alt-current {
+      font-size: 12px;
+      font-style: italic;
+      color: #5f6368;
+      padding: 4px 0;
+    }
+    .alt-current.empty { color: #c5221f; }
+    .alt-proposed {
+      width: 100%;
+      min-height: 60px;
+      padding: 8px;
+      font-family: inherit;
+      font-size: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    .alt-proposed:focus { outline: 2px solid #1a73e8; border-color: transparent; }
+
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-apply { background: #1a73e8; color: #fff; }
+    .btn-apply:hover { background: #1557b0; }
+    .btn-apply:disabled { background: #dadce0; color: #80868b; cursor: default; }
+    .btn-regen { background: #fff; color: #1a73e8; border: 1px solid #dadce0; }
+    .btn-regen:hover { background: #f1f3f4; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>Alt text</h2>
+    <div class="subtitle">Generate HTML alt descriptions for images — used by audio narrations.</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnLoad" onclick="loadImages()">Scan images</button>
+    <button class="btn btn-secondary" id="btnGenAll" onclick="generateAll()" style="display:none">Generate all missing</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+
+  <script>
+    var images = [];
+
+    function showStatus(kind, msg) {
+      var el = document.getElementById('status');
+      el.className = 'status visible ' + kind;
+      el.textContent = msg;
+    }
+
+    function escHtml(s) {
+      if (!s) return '';
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function loadImages() {
+      var btn = document.getElementById('btnLoad');
+      btn.disabled = true;
+      btn.textContent = 'Scanning...';
+      showStatus('running', 'Reading document images...');
+      document.getElementById('results').innerHTML = '';
+
+      google.script.run
+        .withSuccessHandler(onImagesLoaded)
+        .withFailureHandler(onError)
+        .getDocumentImages();
+    }
+
+    function onImagesLoaded(result) {
+      var btn = document.getElementById('btnLoad');
+      btn.disabled = false;
+      btn.textContent = 'Rescan';
+
+      images = (result || []).map(function(img) {
+        return Object.assign({}, img, { proposed: '', state: 'idle' });
+      });
+
+      if (images.length === 0) {
+        showStatus('done', 'No images found in this document.');
+        document.getElementById('results').innerHTML =
+          '<div class="empty-state"><div class="icon">&#128444;</div>No images to process.</div>';
+        return;
+      }
+
+      var missing = images.filter(function(i) { return !i.altDescription; }).length;
+      var msg = images.length + ' image' + (images.length === 1 ? '' : 's') + ' found';
+      if (missing > 0) msg += ' — ' + missing + ' missing alt text';
+      showStatus('done', msg);
+
+      document.getElementById('btnGenAll').style.display = missing > 0 ? '' : 'none';
+      renderCards();
+    }
+
+    function onError(err) {
+      var btn = document.getElementById('btnLoad');
+      btn.disabled = false;
+      btn.textContent = 'Scan images';
+      showStatus('error', 'Error: ' + (err && err.message ? err.message : err));
+    }
+
+    function renderCards() {
+      var container = document.getElementById('results');
+      container.innerHTML = '';
+
+      images.forEach(function(img, idx) {
+        var card = document.createElement('div');
+        card.className = 'image-card' +
+          (img.state === 'applied' ? ' applied' : '') +
+          (img.state === 'running' ? ' pending' : '');
+        card.id = 'img-' + idx;
+
+        var hasAlt = !!img.altDescription;
+        var html = '';
+        html += '<div class="image-header">';
+        html += '<span class="image-label" onclick="navigateTo(' + idx + ')">Image ' + (idx + 1) + ' &rarr;</span>';
+        html += '<span>' + (img.width || '?') + '&times;' + (img.height || '?') + '</span>';
+        html += '</div>';
+
+        if (img.surroundingText) {
+          html += '<div class="image-context">' + escHtml(img.surroundingText.slice(0, 200)) + (img.surroundingText.length > 200 ? '…' : '') + '</div>';
+        }
+
+        html += '<div class="alt-label">Current alt</div>';
+        html += '<div class="alt-current' + (hasAlt ? '' : ' empty') + '">' +
+          (hasAlt ? escHtml(img.altDescription) : '(none)') + '</div>';
+
+        html += '<div class="alt-label">Proposed</div>';
+        html += '<textarea class="alt-proposed" id="proposed-' + idx +
+          '" placeholder="Click Generate or type your own…">' +
+          escHtml(img.proposed || '') + '</textarea>';
+
+        html += '<div class="actions">';
+        html += '<button class="btn-sm btn-regen" onclick="generateOne(' + idx + ')">' +
+          (img.state === 'running' ? 'Generating…' : 'Generate') + '</button>';
+        html += '<button class="btn-sm btn-apply" id="apply-' + idx +
+          '" onclick="applyOne(' + idx + ')"' +
+          (img.proposed ? '' : ' disabled') + '>Apply</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    function navigateTo(idx) {
+      google.script.run.navigateToImage(idx);
+    }
+
+    function generateOne(idx) {
+      var img = images[idx];
+      img.state = 'running';
+      renderCards();
+      showStatus('running', 'Generating alt text for image ' + (idx + 1) + '...');
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            img.state = 'idle';
+            showStatus('error', 'Image ' + (idx + 1) + ': ' + result.error);
+            renderCards();
+            return;
+          }
+          img.state = 'idle';
+          img.proposed = result.altDescription || '';
+          renderCards();
+          showStatus('done', 'Generated alt text for image ' + (idx + 1) + '.');
+        })
+        .withFailureHandler(function(err) {
+          img.state = 'idle';
+          showStatus('error', 'Image ' + (idx + 1) + ' failed: ' + (err.message || err));
+          renderCards();
+        })
+        .generateAltTextForImage(idx);
+    }
+
+    function applyOne(idx) {
+      var img = images[idx];
+      var textarea = document.getElementById('proposed-' + idx);
+      var text = textarea ? textarea.value.trim() : img.proposed;
+      if (!text) return;
+
+      img.proposed = text;
+
+      google.script.run
+        .withSuccessHandler(function(ok) {
+          if (ok) {
+            img.altDescription = text;
+            img.state = 'applied';
+            renderCards();
+            showStatus('done', 'Applied alt text to image ' + (idx + 1) + '.');
+            updateGenAllButton();
+          }
+        })
+        .withFailureHandler(function(err) {
+          showStatus('error', 'Apply failed: ' + (err.message || err));
+        })
+        .applyAltTextToImage(idx, text);
+    }
+
+    function generateAll() {
+      var missing = images
+        .map(function(img, idx) { return { img: img, idx: idx }; })
+        .filter(function(x) { return !x.img.altDescription; });
+
+      if (missing.length === 0) return;
+
+      var btn = document.getElementById('btnGenAll');
+      btn.disabled = true;
+      btn.textContent = 'Generating…';
+
+      var completed = 0;
+      function next() {
+        if (completed >= missing.length) {
+          btn.disabled = false;
+          btn.textContent = 'Generate all missing';
+          showStatus('done', 'Generated ' + completed + ' alt descriptions.');
+          return;
+        }
+        var entry = missing[completed];
+        showStatus('running', 'Generating ' + (completed + 1) + '/' + missing.length + '...');
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && !result.error) {
+              entry.img.proposed = result.altDescription || '';
+              renderCards();
+            }
+            completed++;
+            next();
+          })
+          .withFailureHandler(function() {
+            completed++;
+            next();
+          })
+          .generateAltTextForImage(entry.idx);
+      }
+      next();
+    }
+
+    function updateGenAllButton() {
+      var missing = images.filter(function(i) { return !i.altDescription; }).length;
+      document.getElementById('btnGenAll').style.display = missing > 0 ? '' : 'none';
+    }
+
+    // Sync textarea edits into our state
+    document.addEventListener('input', function(e) {
+      if (e.target.classList && e.target.classList.contains('alt-proposed')) {
+        var idx = parseInt(e.target.id.replace('proposed-', ''), 10);
+        if (!isNaN(idx) && images[idx]) {
+          images[idx].proposed = e.target.value;
+          var applyBtn = document.getElementById('apply-' + idx);
+          if (applyBtn) applyBtn.disabled = !e.target.value.trim();
+        }
+      }
+    });
+  </script>
+</body>
+</html>

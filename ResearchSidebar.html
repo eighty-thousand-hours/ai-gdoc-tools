@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .header { margin-bottom: 16px; }
+    .header h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+    .header .subtitle { font-size: 12px; color: #5f6368; }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #dadce0;
+      margin-bottom: 12px;
+    }
+    .tab {
+      padding: 8px 14px;
+      font-size: 13px;
+      color: #5f6368;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    .tab.active { color: #1a73e8; border-bottom-color: #1a73e8; }
+    .tab:hover { color: #1a73e8; }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    .controls { display: flex; gap: 8px; margin-bottom: 14px; }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled { background: #dadce0; color: #80868b; cursor: default; }
+    .btn-secondary { background: #fff; color: #1a73e8; border: 1px solid #dadce0; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .empty-state { padding: 24px 16px; text-align: center; color: #5f6368; font-size: 13px; }
+
+    .link-card, .finding-card {
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+    }
+    .link-card.status-ok { border-color: #137333; background: #e6f4ea; }
+    .link-card.status-partial { border-color: #f9ab00; background: #fff8e1; }
+    .link-card.status-mismatch { border-color: #c5221f; background: #fce8e6; }
+    .link-card.status-broken { border-color: #c5221f; background: #fce8e6; }
+    .link-card.status-unknown { border-color: #dadce0; }
+
+    .card-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .card-anchor {
+      font-weight: 500;
+      color: #1a73e8;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .card-anchor:hover { color: #1557b0; }
+    .card-url {
+      font-size: 11px;
+      color: #5f6368;
+      word-break: break-all;
+    }
+    .card-url a { color: #5f6368; }
+    .card-status {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+    .card-status.ok { background: #137333; color: #fff; }
+    .card-status.partial { background: #f9ab00; color: #202124; }
+    .card-status.mismatch, .card-status.broken { background: #c5221f; color: #fff; }
+    .card-status.unknown { background: #dadce0; color: #202124; }
+    .card-status.pending { background: #1a73e8; color: #fff; }
+    .card-explanation {
+      font-size: 12px;
+      line-height: 1.4;
+      color: #202124;
+      margin-top: 6px;
+    }
+    .card-context {
+      font-size: 11px;
+      font-style: italic;
+      color: #5f6368;
+      background: #f8f9fa;
+      padding: 6px 8px;
+      border-radius: 3px;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
+    .finding-card.severity-contradiction { border-color: #c5221f; background: #fce8e6; }
+    .finding-card.severity-update { border-color: #f9ab00; background: #fff8e1; }
+    .finding-claim {
+      font-size: 12px;
+      font-style: italic;
+      color: #202124;
+      margin-bottom: 6px;
+    }
+    .finding-body { font-size: 13px; line-height: 1.4; }
+    .finding-source {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 6px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>Research helper</h2>
+    <div class="subtitle">Verify hyperlinks and check for recent developments that contradict claims in the draft.</div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-links" onclick="switchTab('links')">Link verification</div>
+    <div class="tab" id="tab-recency" onclick="switchTab('recency')">Recency check</div>
+  </div>
+
+  <!-- Link verification pane -->
+  <div class="pane active" id="pane-links">
+    <div class="controls">
+      <button class="btn btn-primary" id="btnLinks" onclick="startLinkVerification()">Verify links</button>
+      <button class="btn btn-secondary" id="btnLinksStop" onclick="stopLinkVerification()" style="display:none">Stop</button>
+    </div>
+    <div class="status" id="linkStatus"></div>
+    <div id="linkResults"></div>
+  </div>
+
+  <!-- Recency check pane -->
+  <div class="pane" id="pane-recency">
+    <div class="controls">
+      <button class="btn btn-primary" id="btnRecency" onclick="runRecency()">Check for recent developments</button>
+    </div>
+    <div class="status" id="recencyStatus"></div>
+    <div id="recencyResults"></div>
+  </div>
+
+  <script>
+    var links = [];
+    var verifying = false;
+    var stopRequested = false;
+
+    function switchTab(name) {
+      document.getElementById('tab-links').className = 'tab' + (name === 'links' ? ' active' : '');
+      document.getElementById('tab-recency').className = 'tab' + (name === 'recency' ? ' active' : '');
+      document.getElementById('pane-links').className = 'pane' + (name === 'links' ? ' active' : '');
+      document.getElementById('pane-recency').className = 'pane' + (name === 'recency' ? ' active' : '');
+    }
+
+    function showStatus(id, kind, msg) {
+      var el = document.getElementById(id);
+      el.className = 'status visible ' + kind;
+      el.textContent = msg;
+    }
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // -----------------------------------------------------------------------
+    // Link verification
+    // -----------------------------------------------------------------------
+
+    function startLinkVerification() {
+      document.getElementById('linkResults').innerHTML = '';
+      showStatus('linkStatus', 'running', 'Enumerating links…');
+      document.getElementById('btnLinks').disabled = true;
+
+      google.script.run
+        .withSuccessHandler(onLinksEnumerated)
+        .withFailureHandler(function(err) {
+          document.getElementById('btnLinks').disabled = false;
+          showStatus('linkStatus', 'error', 'Error: ' + (err.message || err));
+        })
+        .getDocumentExternalLinks();
+    }
+
+    function onLinksEnumerated(result) {
+      links = (result || []).map(function(l) {
+        return Object.assign({}, l, { state: 'pending', verdict: null });
+      });
+      if (links.length === 0) {
+        document.getElementById('btnLinks').disabled = false;
+        showStatus('linkStatus', 'done', 'No external links to verify.');
+        document.getElementById('linkResults').innerHTML =
+          '<div class="empty-state">No external links found in this document.</div>';
+        return;
+      }
+      showStatus('linkStatus', 'running', 'Verifying 1/' + links.length + '...');
+      document.getElementById('btnLinksStop').style.display = '';
+      renderLinks();
+      verifying = true;
+      stopRequested = false;
+      verifyNext(0);
+    }
+
+    function verifyNext(i) {
+      if (stopRequested || i >= links.length) {
+        verifying = false;
+        document.getElementById('btnLinks').disabled = false;
+        document.getElementById('btnLinksStop').style.display = 'none';
+        var done = links.filter(function(l) { return l.verdict; }).length;
+        showStatus('linkStatus', 'done', done + '/' + links.length + ' verified.');
+        return;
+      }
+
+      showStatus('linkStatus', 'running', 'Verifying ' + (i + 1) + '/' + links.length + '...');
+      links[i].state = 'running';
+      renderLinks();
+
+      google.script.run
+        .withSuccessHandler(function(verdict) {
+          links[i].state = 'done';
+          links[i].verdict = verdict || { status: 'unknown', explanation: '' };
+          renderLinks();
+          verifyNext(i + 1);
+        })
+        .withFailureHandler(function(err) {
+          links[i].state = 'done';
+          links[i].verdict = { status: 'error', explanation: (err.message || err) };
+          renderLinks();
+          verifyNext(i + 1);
+        })
+        .verifyLink(i);
+    }
+
+    function stopLinkVerification() {
+      stopRequested = true;
+    }
+
+    function renderLinks() {
+      var container = document.getElementById('linkResults');
+      container.innerHTML = '';
+      links.forEach(function(link, idx) {
+        var verdict = link.verdict || { status: link.state === 'running' ? 'pending' : 'pending', explanation: '' };
+        var card = document.createElement('div');
+        card.className = 'link-card status-' + (verdict.status || 'unknown');
+
+        var html = '<div class="card-row">';
+        html += '<span class="card-anchor" onclick="goToLink(' + idx + ')">' + escHtml(link.anchorText || '(no anchor)') + '</span>';
+        html += '<span class="card-status ' + escHtml(verdict.status || 'pending') + '">' +
+          escHtml(verdict.status || 'pending') + '</span>';
+        html += '</div>';
+        html += '<div class="card-url">' + escHtml(link.url) + '</div>';
+
+        if (verdict.explanation) {
+          html += '<div class="card-explanation">' + escHtml(verdict.explanation) + '</div>';
+        }
+        if (verdict.suggestedAnchor) {
+          html += '<div class="card-explanation"><b>Suggested anchor:</b> ' + escHtml(verdict.suggestedAnchor) + '</div>';
+        }
+        if (link.context) {
+          html += '<div class="card-context">' + escHtml(link.context) + '</div>';
+        }
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    function goToLink(idx) {
+      google.script.run.navigateToLink(idx);
+    }
+
+    // -----------------------------------------------------------------------
+    // Recency check
+    // -----------------------------------------------------------------------
+
+    function runRecency() {
+      var btn = document.getElementById('btnRecency');
+      btn.disabled = true;
+      btn.textContent = 'Searching…';
+      document.getElementById('recencyResults').innerHTML = '';
+      showStatus('recencyStatus', 'running', 'Scanning for recent developments (this can take up to a minute)...');
+
+      google.script.run
+        .withSuccessHandler(onRecencyComplete)
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Check for recent developments';
+          showStatus('recencyStatus', 'error', 'Error: ' + (err.message || err));
+        })
+        .runRecencyCheckFromSidebar();
+    }
+
+    function onRecencyComplete(result) {
+      var btn = document.getElementById('btnRecency');
+      btn.disabled = false;
+      btn.textContent = 'Re-run';
+
+      if (result.error) {
+        showStatus('recencyStatus', 'error', result.error);
+        return;
+      }
+
+      var findings = result.findings || [];
+      if (findings.length === 0) {
+        showStatus('recencyStatus', 'done', 'No material updates found in the last 14 days.');
+        document.getElementById('recencyResults').innerHTML =
+          '<div class="empty-state">Nothing recent contradicts the draft.</div>';
+        return;
+      }
+
+      showStatus('recencyStatus', 'done', findings.length + ' finding' + (findings.length === 1 ? '' : 's') + ' to review.');
+
+      var container = document.getElementById('recencyResults');
+      container.innerHTML = '';
+      findings.forEach(function(f) {
+        var card = document.createElement('div');
+        card.className = 'finding-card severity-' + (f.severity || 'update');
+        var html = '';
+        if (f.claim) html += '<div class="finding-claim">' + escHtml(f.claim) + '</div>';
+        html += '<div class="finding-body">' + escHtml(f.finding || '') + '</div>';
+        if (f.sourceUrl) {
+          html += '<div class="finding-source"><a href="' + escHtml(f.sourceUrl) + '" target="_blank">' +
+            escHtml(f.sourceTitle || f.sourceUrl) + '</a></div>';
+        }
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+  </script>
+</body>
+</html>

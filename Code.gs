@@ -13,6 +13,10 @@ function onOpen() {
     .createMenu('Epoch AI')
     .addItem('Check style', 'showStyleSidebar')
     .addItem('Suggest links', 'showLinksSidebar')
+    .addSeparator()
+    .addItem('Research helper', 'showResearchSidebar')
+    .addItem('Generate alt text', 'showAltTextSidebar')
+    .addItem('Generate metadata', 'showMetadataSidebar')
     .addToUi();
 }
 
@@ -40,6 +44,27 @@ function showLinksSidebar() {
   var html = HtmlService.createTemplateFromFile('LinksSidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
   var output = html.evaluate().setTitle('Epoch AI — Internal links');
+  DocumentApp.getUi().showSidebar(output);
+}
+
+function showAltTextSidebar() {
+  var html = HtmlService.createTemplateFromFile('AltTextSidebar');
+  html.userEmail = Session.getEffectiveUser().getEmail();
+  var output = html.evaluate().setTitle('Epoch AI — Alt text');
+  DocumentApp.getUi().showSidebar(output);
+}
+
+function showResearchSidebar() {
+  var html = HtmlService.createTemplateFromFile('ResearchSidebar');
+  html.userEmail = Session.getEffectiveUser().getEmail();
+  var output = html.evaluate().setTitle('Epoch AI — Research helper');
+  DocumentApp.getUi().showSidebar(output);
+}
+
+function showMetadataSidebar() {
+  var html = HtmlService.createTemplateFromFile('MetadataSidebar');
+  html.userEmail = Session.getEffectiveUser().getEmail();
+  var output = html.evaluate().setTitle('Epoch AI — Metadata');
   DocumentApp.getUi().showSidebar(output);
 }
 

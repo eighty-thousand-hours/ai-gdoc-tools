@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .header { margin-bottom: 16px; }
+    .header h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+    .header .subtitle { font-size: 12px; color: #5f6368; }
+
+    .controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled { background: #dadce0; color: #80868b; cursor: default; }
+    .btn-secondary { background: #fff; color: #1a73e8; border: 1px solid #dadce0; }
+    .btn-secondary:hover { background: #f1f3f4; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      display: none;
+      line-height: 1.4;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    .field-card {
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: #fff;
+    }
+    .field-card.applied { background: #e6f4ea; border-color: #137333; }
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #1a73e8;
+      margin-bottom: 6px;
+    }
+    .field-current-label {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+    .field-current {
+      font-size: 12px;
+      color: #5f6368;
+      font-style: italic;
+      padding: 4px 0;
+    }
+    .field-current.empty { color: #c5221f; }
+    .field-proposed-label {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 8px;
+      margin-bottom: 2px;
+    }
+    .field-input {
+      width: 100%;
+      min-height: 36px;
+      padding: 6px 8px;
+      font-family: inherit;
+      font-size: 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      resize: vertical;
+      line-height: 1.4;
+    }
+    .field-input:focus { outline: 2px solid #1a73e8; border-color: transparent; }
+    .char-count { font-size: 10px; color: #5f6368; text-align: right; margin-top: 2px; }
+
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-apply { background: #1a73e8; color: #fff; }
+    .btn-apply:hover { background: #1557b0; }
+    .btn-apply:disabled { background: #dadce0; color: #80868b; cursor: default; }
+
+    .empty-state { padding: 24px 16px; text-align: center; color: #5f6368; font-size: 13px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>Metadata</h2>
+    <div class="subtitle">Auto-fill SEO metadata in the document's Metadata table.</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnGenerate" onclick="generate()">Generate metadata</button>
+    <button class="btn btn-secondary" id="btnApplyAll" onclick="applyAll()" style="display:none">Apply all</button>
+  </div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="toggleOverwrite">
+    <label for="toggleOverwrite">Overwrite existing non-empty fields</label>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+
+  <script>
+    var state = { rows: [], proposals: {}, tabName: null };
+
+    function showStatus(kind, msg) {
+      var el = document.getElementById('status');
+      el.className = 'status visible ' + kind;
+      el.textContent = msg;
+    }
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function fieldDisplayName(field) {
+      return {
+        tags: 'Tags',
+        htmlTitle: 'HTML title',
+        htmlMeta: 'HTML meta'
+      }[field] || field;
+    }
+
+    function generate() {
+      var btn = document.getElementById('btnGenerate');
+      btn.disabled = true;
+      btn.textContent = 'Generating…';
+      document.getElementById('btnApplyAll').style.display = 'none';
+      document.getElementById('results').innerHTML = '';
+      showStatus('running', 'Reading metadata table and calling Claude…');
+
+      google.script.run
+        .withSuccessHandler(function(meta) {
+          if (meta.error) {
+            btn.disabled = false;
+            btn.textContent = 'Generate metadata';
+            showStatus('error', meta.error);
+            return;
+          }
+          state.rows = meta.rows || [];
+          state.tabName = meta.tabName || null;
+          runLLM();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Generate metadata';
+          showStatus('error', 'Error: ' + (err.message || err));
+        })
+        .getMetadataState();
+    }
+
+    function runLLM() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          var btn = document.getElementById('btnGenerate');
+          btn.disabled = false;
+          btn.textContent = 'Regenerate';
+
+          if (result.error) {
+            showStatus('error', result.error);
+            return;
+          }
+          state.proposals = result.proposals || {};
+
+          var fieldCount = Object.keys(state.proposals).length;
+          if (fieldCount === 0) {
+            showStatus('done', 'Claude returned no proposals.');
+            return;
+          }
+
+          var ctx = state.tabName ? 'Metadata tab: ' + state.tabName : 'Metadata table found in the document body.';
+          showStatus('done', 'Proposals ready. ' + ctx);
+          document.getElementById('btnApplyAll').style.display = '';
+          renderFields();
+        })
+        .withFailureHandler(function(err) {
+          var btn = document.getElementById('btnGenerate');
+          btn.disabled = false;
+          btn.textContent = 'Generate metadata';
+          showStatus('error', 'Error: ' + (err.message || err));
+        })
+        .generateMetadataProposals();
+    }
+
+    function renderFields() {
+      var container = document.getElementById('results');
+      container.innerHTML = '';
+
+      state.rows.forEach(function(row) {
+        var proposed = state.proposals[row.field] || '';
+        var card = document.createElement('div');
+        card.className = 'field-card';
+        card.id = 'card-' + row.field;
+
+        var html = '';
+        html += '<div class="field-label">' + escHtml(fieldDisplayName(row.field)) + '</div>';
+        html += '<div class="field-current-label">Current</div>';
+        html += '<div class="field-current' + (row.currentValue ? '' : ' empty') + '">' +
+          (row.currentValue ? escHtml(row.currentValue) : '(empty)') + '</div>';
+        html += '<div class="field-proposed-label">Proposed</div>';
+        html += '<textarea class="field-input" id="input-' + row.field + '" data-field="' + row.field +
+          '" rows="' + (row.field === 'htmlMeta' ? 3 : 2) + '">' + escHtml(proposed) + '</textarea>';
+        html += '<div class="char-count" id="count-' + row.field + '">' + proposed.length + ' chars</div>';
+        html += '<div class="actions">';
+        html += '<button class="btn-sm btn-apply" id="apply-' + row.field +
+          '" onclick="applyOne(\'' + row.field + '\')"' + (proposed ? '' : ' disabled') + '>Apply</button>';
+        html += '</div>';
+
+        card.innerHTML = html;
+        container.appendChild(card);
+      });
+    }
+
+    function applyOne(field) {
+      var input = document.getElementById('input-' + field);
+      var value = input ? input.value.trim() : '';
+      if (!value) return;
+      var overwrite = document.getElementById('toggleOverwrite').checked;
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            showStatus('error', result.error);
+            return;
+          }
+          if (result.skipped) {
+            showStatus('done', 'Skipped ' + fieldDisplayName(field) + ': cell already has content. Toggle "Overwrite" to replace.');
+            return;
+          }
+          var card = document.getElementById('card-' + field);
+          if (card) card.className = 'field-card applied';
+          showStatus('done', 'Applied ' + fieldDisplayName(field) + '.');
+        })
+        .withFailureHandler(function(err) {
+          showStatus('error', 'Apply failed: ' + (err.message || err));
+        })
+        .applyMetadataField(field, value, overwrite);
+    }
+
+    function applyAll() {
+      var overwrite = document.getElementById('toggleOverwrite').checked;
+      var fields = state.rows.map(function(r) { return r.field; })
+        .filter(function(f) { return state.proposals[f]; });
+      if (fields.length === 0) return;
+
+      var done = 0, skipped = 0;
+      function next(i) {
+        if (i >= fields.length) {
+          showStatus('done', 'Applied ' + done + ' field' + (done === 1 ? '' : 's') +
+            (skipped > 0 ? ' (' + skipped + ' skipped because non-empty)' : '') + '.');
+          return;
+        }
+        var field = fields[i];
+        var input = document.getElementById('input-' + field);
+        var value = input ? input.value.trim() : '';
+        if (!value) { next(i + 1); return; }
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result && !result.error) {
+              if (result.skipped) skipped++;
+              else {
+                done++;
+                var card = document.getElementById('card-' + field);
+                if (card) card.className = 'field-card applied';
+              }
+            }
+            next(i + 1);
+          })
+          .withFailureHandler(function() { next(i + 1); })
+          .applyMetadataField(field, value, overwrite);
+      }
+      next(0);
+    }
+
+    // Live char counter
+    document.addEventListener('input', function(e) {
+      if (e.target.classList && e.target.classList.contains('field-input')) {
+        var field = e.target.getAttribute('data-field');
+        var counter = document.getElementById('count-' + field);
+        if (counter) counter.textContent = e.target.value.length + ' chars';
+        var applyBtn = document.getElementById('apply-' + field);
+        if (applyBtn) applyBtn.disabled = !e.target.value.trim();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -546,6 +546,380 @@ function runRelatedWorkSuggestion(documentText) {
   }
 }
 
+// ===========================================================================
+// Alt-text generation for images
+// ===========================================================================
+
+var ALT_TEXT_SYSTEM_PROMPT = [
+  'You generate HTML alt-text descriptions for images embedded in Epoch AI articles.',
+  'Epoch AI is a nonprofit research institute; its articles are dense with charts, graphs, and data visualizations.',
+  '',
+  'Alt text is read aloud verbatim in audio narrations, so it must be:',
+  '- One sentence (target ~15-25 words, hard cap ~35 words).',
+  '- A concise description of what the image shows at a high level, not a reading of every data point.',
+  '- Informative about the image\'s role in the article (e.g. "Line chart comparing compute growth across major AI labs from 2015 to 2025"), not a redundant paraphrase of adjacent prose.',
+  '- Neutral in tone. Do not editorialize or add claims that are not evident from the image plus context.',
+  '',
+  'Conventions:',
+  '- Do not start with "Image of", "Picture of", or "This image shows" — dive straight into the description.',
+  '- For charts: name the chart type (line chart / bar chart / scatter plot / table), the variables on the axes, and the time range if visible.',
+  '- For logos or portraits: just name them plainly (e.g. "Logo of DeepMind").',
+  '- If the image is purely decorative and adds no information, respond with the single token: DECORATIVE',
+  '',
+  'Return ONLY the alt text (or DECORATIVE). No markdown, no quotes, no commentary.'
+].join('\n');
+
+/**
+ * Call Claude with the image bytes + surrounding context. Returns
+ * { altDescription } on success, { error } on failure.
+ */
+function runAltTextGeneration(imageBlob, surroundingText, caption) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) {
+    return { error: 'LLM API key not configured.' };
+  }
+  if (config.provider !== 'anthropic') {
+    return { error: 'Alt-text generation currently requires the anthropic provider.' };
+  }
+
+  var model = config.model || PROVIDERS.anthropic.defaultModel;
+  var mediaType = imageBlob.getContentType() || 'image/png';
+  if (mediaType === 'image/jpg') mediaType = 'image/jpeg';
+
+  var supportedTypes = { 'image/png': true, 'image/jpeg': true, 'image/gif': true, 'image/webp': true };
+  if (!supportedTypes[mediaType]) {
+    return { error: 'Unsupported image type for alt-text generation: ' + mediaType };
+  }
+
+  var base64 = Utilities.base64Encode(imageBlob.getBytes());
+
+  var userContent = [];
+  userContent.push({
+    type: 'image',
+    source: { type: 'base64', media_type: mediaType, data: base64 }
+  });
+
+  var contextLines = [];
+  if (surroundingText) {
+    contextLines.push('## Surrounding article text');
+    contextLines.push(surroundingText);
+  }
+  if (caption) {
+    contextLines.push('## Caption');
+    contextLines.push(caption);
+  }
+  contextLines.push('## Task');
+  contextLines.push('Generate a one-sentence alt description for the image above.');
+  userContent.push({ type: 'text', text: contextLines.join('\n\n') });
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: model,
+      max_tokens: 256,
+      system: ALT_TEXT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userContent }]
+    }),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(PROVIDERS.anthropic.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Alt-text API error: ' + statusCode + ' — ' + response.getContentText());
+      return { error: 'Claude API returned HTTP ' + statusCode + '.' };
+    }
+
+    var body = JSON.parse(response.getContentText());
+    var content = PROVIDERS.anthropic.extractContent(body);
+    if (!content) return { error: 'Empty response from Claude.' };
+
+    var text = content.trim().replace(/^"|"$/g, '').trim();
+    return { altDescription: text };
+  } catch (e) {
+    Logger.log('Alt-text API exception: ' + e.message);
+    return { error: 'Failed to reach the Claude API: ' + e.message };
+  }
+}
+
+// ===========================================================================
+// Research helper — link verification
+// ===========================================================================
+
+var LINK_VERIFICATION_SYSTEM_PROMPT = [
+  'You verify whether a hyperlink in an Epoch AI draft points to a page that actually supports the claim the draft is making.',
+  '',
+  'The user gives you:',
+  '  - The surrounding sentence(s) from the draft (the "claim").',
+  '  - The anchor text of the hyperlink.',
+  '  - The extracted text of the target page.',
+  '',
+  'Assess whether the target page substantively supports, partially supports, or does not support the claim.',
+  'Be generous about structural variation (e.g. the target may use different phrasing) but strict about factual fit.',
+  '',
+  'Return a JSON object with exactly these fields:',
+  '  - "status": one of "ok" | "partial" | "mismatch" | "unknown"',
+  '      * "ok"       — target clearly attests to the claim',
+  '      * "partial"  — target is topically related and loosely supports, but doesn\'t directly attest',
+  '      * "mismatch" — target does not support, or actively contradicts, the claim',
+  '      * "unknown"  — target text is too thin (redirect, paywall, JS-only page) to judge',
+  '  - "explanation": one short sentence stating the reason for the status',
+  '  - "suggestedAnchor": optional — a tighter anchor-text phrase if the current one is vague or misleading (omit or null otherwise)',
+  '',
+  'Return ONLY the JSON object. No markdown, no commentary.'
+].join('\n');
+
+function runLinkVerificationLLM(link, fetched) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) {
+    return { status: 'error', explanation: 'LLM API key not configured.' };
+  }
+  var provider = PROVIDERS[config.provider];
+  if (!provider) {
+    return { status: 'error', explanation: 'Unknown LLM provider: ' + config.provider };
+  }
+  var model = config.model || provider.defaultModel;
+
+  var user = [
+    '## Claim (from the draft)',
+    link.context,
+    '',
+    '## Anchor text',
+    link.anchorText,
+    '',
+    '## Target URL',
+    link.url,
+    '',
+    '## Target page title',
+    fetched.title || '(no title)',
+    '',
+    '## Target page extracted text',
+    fetched.text || '(empty)'
+  ].join('\n');
+
+  var options = provider.buildRequest(config.apiKey, model, LINK_VERIFICATION_SYSTEM_PROMPT, user);
+
+  try {
+    var response = UrlFetchApp.fetch(provider.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Link verification API error: ' + statusCode + ' — ' + response.getContentText());
+      return { status: 'error', explanation: 'Claude API returned HTTP ' + statusCode + '.' };
+    }
+    var body = JSON.parse(response.getContentText());
+    var content = provider.extractContent(body);
+    if (!content) return { status: 'unknown', explanation: 'Empty response from Claude.' };
+
+    var cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      Logger.log('Link verification raw response: ' + cleaned.substring(0, 400));
+      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'));
+    }
+    return {
+      status: parsed.status || 'unknown',
+      explanation: parsed.explanation || '',
+      suggestedAnchor: parsed.suggestedAnchor || null
+    };
+  } catch (e) {
+    Logger.log('Link verification exception: ' + e.message);
+    return { status: 'error', explanation: 'Claude API failure: ' + e.message };
+  }
+}
+
+// ===========================================================================
+// Research helper — recency check via web search
+// ===========================================================================
+
+var RECENCY_CHECK_SYSTEM_PROMPT = [
+  'You help an Epoch AI draft avoid stale facts before publication.',
+  'Epoch AI is a nonprofit AI research institute; its articles cite empirical numbers, lab releases, benchmarks, model parameters, company actions, and policy events.',
+  '',
+  'You will be given a draft article. Use the web_search tool to look for developments in the last 14 days that would:',
+  '  - contradict a factual claim in the draft (a number has moved, a release was withdrawn, a policy changed),',
+  '  - or update it with materially new information the author might want to reflect.',
+  '',
+  'Search strategy:',
+  '  - Identify the 3-6 most time-sensitive factual claims (model capabilities, benchmark leaderboards, company announcements, funding rounds, regulatory actions).',
+  '  - For each, search for the specific entity + date context.',
+  '  - Skip evergreen claims (definitions, historical events > 6 months old, methodology).',
+  '',
+  'Return a JSON array of findings. Each finding has:',
+  '  - "claim": the specific sentence or phrase from the draft',
+  '  - "finding": a one-sentence summary of what the recent source says',
+  '  - "sourceUrl": canonical URL of the supporting source',
+  '  - "sourceTitle": title of the source (short)',
+  '  - "severity": "update" (new info worth mentioning) | "contradiction" (the draft is now wrong)',
+  '',
+  'If nothing material was found, return an empty array.',
+  'Return ONLY the JSON array. No markdown, no commentary.'
+].join('\n');
+
+function runRecencyCheck(documentText) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) {
+    return { error: 'LLM API key not configured.' };
+  }
+  if (config.provider !== 'anthropic') {
+    return { error: 'Recency check requires the anthropic provider (web search tool).' };
+  }
+
+  var model = config.model || PROVIDERS.anthropic.defaultModel;
+  var text = documentText;
+  if (text.length > MAX_DOCUMENT_CHARS) {
+    text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
+  }
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': config.apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: model,
+      max_tokens: 4096,
+      system: RECENCY_CHECK_SYSTEM_PROMPT,
+      tools: [{
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 6
+      }],
+      messages: [{
+        role: 'user',
+        content: 'Draft article to check for recency issues:\n\n' + text
+      }]
+    }),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(PROVIDERS.anthropic.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Recency check API error: ' + statusCode + ' — ' + response.getContentText());
+      return { error: 'Claude API returned HTTP ' + statusCode + '.' };
+    }
+
+    var body = JSON.parse(response.getContentText());
+    // The assistant may emit a mix of tool_use and text blocks. Pull the last
+    // text block, which should contain the JSON summary.
+    var textBlocks = (body.content || []).filter(function(b) { return b.type === 'text'; });
+    if (!textBlocks.length) return { findings: [] };
+    var content = textBlocks[textBlocks.length - 1].text;
+
+    var cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      Logger.log('Recency check raw response: ' + cleaned.substring(0, 500));
+      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'));
+    }
+    if (!Array.isArray(parsed)) return { findings: [] };
+    return { findings: parsed };
+  } catch (e) {
+    Logger.log('Recency check exception: ' + e.message);
+    return { error: 'Claude API failure: ' + e.message };
+  }
+}
+
+// ===========================================================================
+// Metadata generation (tags, HTML title, HTML meta)
+// ===========================================================================
+
+var METADATA_SYSTEM_PROMPT = [
+  'You fill in SEO metadata for Epoch AI articles. Epoch AI is a nonprofit research institute that publishes empirical analysis of AI trends.',
+  '',
+  'The user gives you:',
+  '  - The draft article text.',
+  '  - A canonical list of tags already in use on the site. You MUST select from this list; do not invent new tags.',
+  '  - Which metadata fields to produce (may be any subset of: tags, htmlTitle, htmlMeta).',
+  '',
+  'Fill the requested fields:',
+  '  - "tags"      — choose 2–4 tags from the canonical list that best describe the article\'s primary topics. Return a comma-separated string.',
+  '  - "htmlTitle" — 50–65 characters, SEO-oriented. Should be crisp, descriptive, and include the most important keyword. Avoid hype words ("breakthrough", "revolutionary", etc.). Use sentence case. Do not include the site name.',
+  '  - "htmlMeta"  — 140–160 characters, summarizing the article\'s thesis and findings. Informative, neutral, written in the third person. End with a period. Avoid hype.',
+  '',
+  'Return a JSON object with only the requested fields. Omit fields you were not asked to produce.',
+  'Return ONLY the JSON object. No markdown, no commentary.'
+].join('\n');
+
+function runMetadataGeneration(documentText, availableTags, metadataRows) {
+  var config = getLLMConfig_();
+  if (!config.apiKey) return { error: 'LLM API key not configured.' };
+  var provider = PROVIDERS[config.provider];
+  if (!provider) return { error: 'Unknown LLM provider: ' + config.provider };
+
+  var model = config.model || provider.defaultModel;
+
+  var text = documentText;
+  if (text.length > MAX_DOCUMENT_CHARS) {
+    text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
+  }
+
+  var fieldsRequested = (metadataRows || []).map(function(r) { return r.field; });
+  if (fieldsRequested.length === 0) fieldsRequested = ['tags', 'htmlTitle', 'htmlMeta'];
+
+  var userMessage = [
+    '## Fields to produce',
+    fieldsRequested.join(', '),
+    '',
+    '## Canonical tag list (pick from these for the "tags" field)',
+    (availableTags || []).join(', '),
+    '',
+    '## Draft article',
+    text
+  ].join('\n');
+
+  var options = provider.buildRequest(config.apiKey, model, METADATA_SYSTEM_PROMPT, userMessage);
+
+  try {
+    var response = UrlFetchApp.fetch(provider.url, options);
+    var statusCode = response.getResponseCode();
+    if (statusCode !== 200) {
+      Logger.log('Metadata API error: ' + statusCode + ' — ' + response.getContentText());
+      return { error: 'Claude API returned HTTP ' + statusCode + '.' };
+    }
+    var body = JSON.parse(response.getContentText());
+    var content = provider.extractContent(body);
+    if (!content) return { error: 'Empty response from Claude.' };
+
+    var cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    var parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (jsonErr) {
+      Logger.log('Metadata raw response: ' + cleaned.substring(0, 400));
+      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'));
+    }
+
+    // Filter tags to ones in the canonical list (defensive).
+    if (parsed.tags && availableTags && availableTags.length) {
+      var allowed = {};
+      availableTags.forEach(function(t) { allowed[t.toLowerCase()] = t; });
+      var filtered = parsed.tags.split(',').map(function(t) {
+        return allowed[t.trim().toLowerCase()] || null;
+      }).filter(Boolean);
+      parsed.tags = filtered.join(', ');
+    }
+
+    return { proposals: parsed };
+  } catch (e) {
+    Logger.log('Metadata API exception: ' + e.message);
+    return { error: 'Claude API failure: ' + e.message };
+  }
+}
+
 function parseRelatedWorkSuggestions_(responseText) {
   var suggestions = [];
 

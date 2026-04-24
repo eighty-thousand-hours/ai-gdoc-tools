@@ -179,6 +179,7 @@
     var links = [];
     var verifying = false;
     var stopRequested = false;
+    var CONCURRENCY = 5;
 
     function switchTab(name) {
       document.getElementById('tab-links').className = 'tab' + (name === 'links' ? ' active' : '');
@@ -227,42 +228,67 @@
           '<div class="empty-state">No external links found in this document.</div>';
         return;
       }
-      showStatus('linkStatus', 'running', 'Verifying 1/' + links.length + '...');
+      showStatus('linkStatus', 'running', 'Verifying 0/' + links.length + '...');
       document.getElementById('btnLinksStop').style.display = '';
       renderLinks();
       verifying = true;
       stopRequested = false;
-      verifyNext(0);
+      runPool();
     }
 
-    function verifyNext(i) {
-      if (stopRequested || i >= links.length) {
-        verifying = false;
-        document.getElementById('btnLinks').disabled = false;
-        document.getElementById('btnLinksStop').style.display = 'none';
-        var done = links.filter(function(l) { return l.verdict; }).length;
-        showStatus('linkStatus', 'done', done + '/' + links.length + ' verified.');
-        return;
+    /**
+     * Simple bounded concurrency pool. Keeps CONCURRENCY verifications in
+     * flight. Each slot, when free, pulls the next unverified link.
+     */
+    function runPool() {
+      var cursor = 0;
+      var completed = 0;
+      var active = 0;
+
+      function startNext() {
+        if (stopRequested) return finishIfDone();
+        if (cursor >= links.length) return finishIfDone();
+        var idx = cursor++;
+        active++;
+        links[idx].state = 'running';
+        renderLinks();
+
+        google.script.run
+          .withSuccessHandler(function(verdict) {
+            links[idx].state = 'done';
+            links[idx].verdict = verdict || { status: 'unknown', explanation: '' };
+            onVerifyReturn();
+          })
+          .withFailureHandler(function(err) {
+            links[idx].state = 'done';
+            links[idx].verdict = { status: 'error', explanation: (err.message || err) };
+            onVerifyReturn();
+          })
+          .verifyLink(idx);
       }
 
-      showStatus('linkStatus', 'running', 'Verifying ' + (i + 1) + '/' + links.length + '...');
-      links[i].state = 'running';
-      renderLinks();
+      function onVerifyReturn() {
+        active--;
+        completed++;
+        renderLinks();
+        showStatus('linkStatus', 'running', 'Verifying ' + completed + '/' + links.length + '...');
+        if (!stopRequested) startNext();
+        else finishIfDone();
+      }
 
-      google.script.run
-        .withSuccessHandler(function(verdict) {
-          links[i].state = 'done';
-          links[i].verdict = verdict || { status: 'unknown', explanation: '' };
-          renderLinks();
-          verifyNext(i + 1);
-        })
-        .withFailureHandler(function(err) {
-          links[i].state = 'done';
-          links[i].verdict = { status: 'error', explanation: (err.message || err) };
-          renderLinks();
-          verifyNext(i + 1);
-        })
-        .verifyLink(i);
+      function finishIfDone() {
+        if (active === 0) {
+          verifying = false;
+          document.getElementById('btnLinks').disabled = false;
+          document.getElementById('btnLinksStop').style.display = 'none';
+          var done = links.filter(function(l) { return l.verdict; }).length;
+          showStatus('linkStatus', 'done', done + '/' + links.length + ' verified' +
+            (stopRequested ? ' (stopped)' : '') + '.');
+        }
+      }
+
+      var initial = Math.min(CONCURRENCY, links.length);
+      for (var i = 0; i < initial; i++) startNext();
     }
 
     function stopLinkVerification() {
@@ -300,7 +326,14 @@
     }
 
     function goToLink(idx) {
-      google.script.run.navigateToLink(idx);
+      google.script.run
+        .withSuccessHandler(function(ok) {
+          if (!ok) showStatus('linkStatus', 'error', 'Could not locate the anchor text in the document.');
+        })
+        .withFailureHandler(function(err) {
+          showStatus('linkStatus', 'error', 'Navigate failed: ' + (err.message || err));
+        })
+        .navigateToLink(idx);
     }
 
     // -----------------------------------------------------------------------

@@ -60,6 +60,8 @@ function getDocumentExternalLinks() {
             url: url,
             anchorText: anchor,
             paragraphIndex: pi,
+            anchorStart: start,
+            anchorEnd: i,
             paragraphText: content,
             context: extractContext_(content, start, i)
           });
@@ -144,7 +146,10 @@ function verifyLink(index) {
 }
 
 /**
- * Highlight the anchor text so the user can navigate to it in the doc.
+ * Select the anchor text in the doc so the user can see which link this card
+ * refers to. Uses the stored anchorStart position rather than indexOf so we
+ * hit the right occurrence even when the anchor word appears elsewhere in
+ * the paragraph.
  */
 function navigateToLink(index) {
   var links = getDocumentExternalLinks();
@@ -158,11 +163,20 @@ function navigateToLink(index) {
   var paragraph = paragraphs[link.paragraphIndex];
   var textElement = paragraph.editAsText();
   var content = textElement.getText();
-  var start = content.indexOf(link.anchorText);
-  if (start === -1) return false;
+
+  var start = link.anchorStart;
+  var end = link.anchorEnd;
+  // Guard against the document having shifted since enumeration.
+  if (start == null || end == null ||
+      start < 0 || end > content.length ||
+      content.substring(start, end) !== link.anchorText) {
+    start = content.indexOf(link.anchorText);
+    if (start === -1) return false;
+    end = start + link.anchorText.length;
+  }
 
   var range = doc.newRange()
-    .addElement(textElement, start, start + link.anchorText.length - 1)
+    .addElement(textElement, start, end - 1)
     .build();
   doc.setSelection(range);
   return true;

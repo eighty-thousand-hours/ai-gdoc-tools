@@ -274,6 +274,47 @@ function parseLLMResponse_(responseText, documentText) {
   return issues;
 }
 
+/**
+ * Best-effort extractor: find the first balanced JSON array inside arbitrary
+ * text that may wrap the JSON in prose, markdown fences, or preamble. Returns
+ * the parsed array, or null if nothing parseable is found.
+ */
+function extractJsonArray_(text) {
+  if (!text) return null;
+  var cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '');
+
+  var start = cleaned.indexOf('[');
+  if (start === -1) return null;
+
+  var depth = 0;
+  var inString = false;
+  var escape = false;
+  for (var i = start; i < cleaned.length; i++) {
+    var ch = cleaned.charAt(i);
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '[') depth++;
+    else if (ch === ']') {
+      depth--;
+      if (depth === 0) {
+        var candidate = cleaned.substring(start, i + 1);
+        try {
+          return JSON.parse(candidate);
+        } catch (e) {
+          try {
+            return JSON.parse(candidate.replace(/,\s*([\]}])/g, '$1'));
+          } catch (e2) {
+            return null;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function findExcerptLocation_(excerpt, paragraphs) {
   if (!excerpt) return { paragraphIndex: 0, matchStart: 0, matchEnd: 0 };
 
@@ -752,15 +793,16 @@ var RECENCY_CHECK_SYSTEM_PROMPT = [
   '  - For each, search for the specific entity + date context.',
   '  - Skip evergreen claims (definitions, historical events > 6 months old, methodology).',
   '',
-  'Return a JSON array of findings. Each finding has:',
+  'After the tool calls are done, emit exactly ONE final message whose entire content is a JSON array (starting with "[" and ending with "]"). No preamble. No prose. No markdown code fence. No trailing commentary.',
+  '',
+  'Each finding has:',
   '  - "claim": the specific sentence or phrase from the draft',
   '  - "finding": a one-sentence summary of what the recent source says',
   '  - "sourceUrl": canonical URL of the supporting source',
   '  - "sourceTitle": title of the source (short)',
   '  - "severity": "update" (new info worth mentioning) | "contradiction" (the draft is now wrong)',
   '',
-  'If nothing material was found, return an empty array.',
-  'Return ONLY the JSON array. No markdown, no commentary.'
+  'If nothing material was found, the entire final message is the literal three characters: []'
 ].join('\n');
 
 function runRecencyCheck(documentText) {
@@ -812,20 +854,16 @@ function runRecencyCheck(documentText) {
 
     var body = JSON.parse(response.getContentText());
     // The assistant may emit a mix of tool_use and text blocks. Pull the last
-    // text block, which should contain the JSON summary.
+    // text block — that's where the summary lives after tool calls finish.
     var textBlocks = (body.content || []).filter(function(b) { return b.type === 'text'; });
     if (!textBlocks.length) return { findings: [] };
     var content = textBlocks[textBlocks.length - 1].text;
 
-    var cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    var parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (jsonErr) {
-      Logger.log('Recency check raw response: ' + cleaned.substring(0, 500));
-      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'));
+    var parsed = extractJsonArray_(content);
+    if (!Array.isArray(parsed)) {
+      Logger.log('Recency check: could not extract JSON array. Raw response: ' + content.substring(0, 600));
+      return { error: 'Claude returned a non-JSON response. See script logs for details.' };
     }
-    if (!Array.isArray(parsed)) return { findings: [] };
     return { findings: parsed };
   } catch (e) {
     Logger.log('Recency check exception: ' + e.message);

@@ -150,13 +150,77 @@ function generateAltTextForImage(index) {
 }
 
 /**
- * Apply an alt description to a single image.
+ * Apply an alt description to a single image. Writes the alt text in two
+ * places:
+ *
+ *   1. As a bracketed paragraph immediately below the image — this is what
+ *      Epoch's publication automation reads when converting docs to web
+ *      content. Replaces an existing bracketed paragraph if one is already
+ *      there (idempotent across repeated Apply clicks).
+ *   2. As the image's alt-description metadata — invisible in the doc but
+ *      kept in sync for accessibility.
  */
 function applyAltTextToImage(index, altDescription) {
   var body = DocumentApp.getActiveDocument().getBody();
   var images = body.getImages();
   if (index < 0 || index >= images.length) return false;
-  images[index].setAltDescription(altDescription || '');
+
+  var alt = (altDescription || '').trim();
+  if (!alt) return false;
+
+  var image = images[index];
+
+  // Capture the previous alt text BEFORE overwriting it — we use it below to
+  // identify (and replace) a bracketed paragraph we wrote on a prior Apply,
+  // without risking clobber of an unrelated bracketed line the user wrote.
+  var previousAlt = '';
+  try {
+    previousAlt = (image.getAltDescription() || '').trim();
+  } catch (e) {}
+
+  try {
+    image.setAltDescription(alt);
+  } catch (e) {
+    // Linked drawings/charts may not support setAltDescription; ignore so the
+    // bracketed-paragraph write below still runs.
+  }
+
+  return writeBracketedAltBelowImage_(image, alt, previousAlt);
+}
+
+/**
+ * Insert (or update) a paragraph reading "[alt text]" directly below the
+ * paragraph that contains the image. We replace an existing paragraph only if
+ * its contents match "[<previousAlt>]" — that way repeated Apply clicks stay
+ * idempotent without accidentally overwriting unrelated bracketed text the
+ * user might have placed there manually (e.g. "[citation needed]").
+ */
+function writeBracketedAltBelowImage_(image, alt, previousAlt) {
+  var paragraph = findImageParagraph_(image);
+  if (!paragraph) return false;
+
+  var container = paragraph.getParent();
+  if (!container || typeof container.getChildIndex !== 'function' ||
+      typeof container.insertParagraph !== 'function') {
+    return false;
+  }
+
+  var pos = container.getChildIndex(paragraph);
+  var bracketed = '[' + alt + ']';
+
+  var nextChild = (pos + 1 < container.getNumChildren()) ? container.getChild(pos + 1) : null;
+  if (nextChild && nextChild.getType() === DocumentApp.ElementType.PARAGRAPH) {
+    var nextPara = nextChild.asParagraph();
+    var nextText = nextPara.getText().trim();
+    var prevBracketed = previousAlt ? ('[' + previousAlt + ']') : null;
+    if ((prevBracketed && nextText === prevBracketed) || nextText === bracketed) {
+      nextPara.clear();
+      nextPara.appendText(bracketed);
+      return true;
+    }
+  }
+
+  container.insertParagraph(pos + 1, bracketed);
   return true;
 }
 

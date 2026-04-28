@@ -918,18 +918,19 @@ function sanitizeFinding_(finding) {
 function sanitizeText_(s) {
   if (!s) return s;
   return String(s)
-    // Drop C0 controls and DEL except newline/tab.
+    // C0 controls + DEL, except tab/newline/CR.
     .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
-    // Drop zero-width spaces, BOM, soft hyphen, and other invisibles.
-    .replace(/[­​-‏ -  -⁯﻿]/g, '')
-    // Smart quotes / dashes / ellipsis -> ASCII.
-    .replace(/[‘’‚‛]/g, "'")
-    .replace(/[“”„‟]/g, '"')
-    .replace(/[–—]/g, '-')
-    .replace(/…/g, '...')
-    // Non-breaking spaces -> regular spaces.
-    .replace(/ /g, ' ')
-    // Collapse runs of whitespace.
+    // Soft hyphen, zero-width spaces, bidi marks, BOM, other invisibles.
+    .replace(/[\u00AD\u200B-\u200F\u2028-\u202F\u205F-\u206F\uFEFF]/g, '')
+    // Smart quotes -> ASCII.
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    // En/em dashes -> hyphen, ellipsis -> three dots.
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    // Non-breaking space -> regular space.
+    .replace(/\u00A0/g, ' ')
+    // Collapse runs of horizontal whitespace.
     .replace(/[ \t]+/g, ' ')
     .trim();
 }

@@ -513,6 +513,10 @@
             escHtml(f.claim) + '</div>';
         }
         html += '<div class="finding-body">' + escHtml(f.finding || '') + '</div>';
+        if (f.reasoning) {
+          html += '<div class="finding-body" style="margin-top:4px;color:#5f6368;font-size:11px"><b>Why flagged:</b> ' +
+            escHtml(f.reasoning) + '</div>';
+        }
         if (f.sourceUrl) {
           html += '<div class="finding-source"><a href="' + escHtml(f.sourceUrl) + '" target="_blank">' +
             escHtml(f.sourceTitle || f.sourceUrl) + '</a></div>';

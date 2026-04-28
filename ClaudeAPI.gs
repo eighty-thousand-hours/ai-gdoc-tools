@@ -803,14 +803,24 @@ var RECENCY_CHECK_SYSTEM_PROMPT = [
   '  - For each, search for the specific entity + date context.',
   '  - Skip evergreen claims (definitions, historical events > 6 months old, methodology).',
   '',
+  'EVALUATION DISCIPLINE — read both sides carefully before flagging:',
+  '  - Read the FULL surrounding paragraph in the draft, not just the bare claim. The author often qualifies (e.g. "as of Q1 2025", "in the training run we measured", "for inference", "projected"). A finding that contradicts the claim out of context but matches once you read the qualification is NOT a finding.',
+  '  - Read the source you found carefully. Note its date, its scope (current vs projected, training vs inference, US-only vs global, lab vs industry), and its methodology. A "12 GW projected for 2027" claim does NOT contradict "5 GW currently deployed" in the draft.',
+  '  - Match units, time horizons, and definitions exactly. If the draft says "training compute" and the source says "total compute (training + inference)", that is not a contradiction.',
+  '  - Tense matters: a draft saying "OpenAI has not released GPT-5" is NOT contradicted by "OpenAI announced GPT-5 will be released next month".',
+  '  - When in doubt, don\'t flag. Aim for 0-3 high-quality findings rather than a long list of weak ones. False positives waste editor time.',
+  '',
   'After the tool calls are done, emit exactly ONE final message whose entire content is a JSON array (starting with "[" and ending with "]"). No preamble. No prose. No markdown code fence. No trailing commentary.',
   '',
   'Each finding has:',
-  '  - "claim": the specific sentence or phrase from the draft',
-  '  - "finding": a one-sentence summary of what the recent source says',
+  '  - "claim": the specific sentence or phrase from the draft (verbatim, ASCII-clean)',
+  '  - "finding": a one-sentence summary of what the recent source says, with units / time-horizon / scope explicit',
+  '  - "reasoning": a one-sentence justification for why this is a real conflict (not a scope or time mismatch)',
   '  - "sourceUrl": canonical URL of the supporting source',
   '  - "sourceTitle": title of the source (short)',
   '  - "severity": "update" (new info worth mentioning) | "contradiction" (the draft is now wrong)',
+  '',
+  'Use plain ASCII in the JSON strings — no smart quotes, no em-dashes, no zero-width spaces, no markdown formatting characters.',
   '',
   'If nothing material was found, the entire final message is the literal three characters: []'
 ].join('\n');
@@ -830,6 +840,10 @@ function runRecencyCheck(documentText) {
     text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
   }
 
+  // Extended thinking gives Claude budget to reason about scope/time/unit
+  // mismatches before deciding whether a finding is real. Editors flagged that
+  // the prior pass produced false positives (e.g. flagging "current volume"
+  // claims as contradicted by sources reporting "projected" numbers).
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -839,7 +853,8 @@ function runRecencyCheck(documentText) {
     },
     payload: JSON.stringify({
       model: model,
-      max_tokens: 4096,
+      max_tokens: 12000,
+      thinking: { type: 'enabled', budget_tokens: 6000 },
       system: RECENCY_CHECK_SYSTEM_PROMPT,
       tools: [{
         type: 'web_search_20250305',
@@ -863,8 +878,9 @@ function runRecencyCheck(documentText) {
     }
 
     var body = JSON.parse(response.getContentText());
-    // The assistant may emit a mix of tool_use and text blocks. Pull the last
-    // text block — that's where the summary lives after tool calls finish.
+    // The assistant may emit a mix of thinking, tool_use, and text blocks.
+    // Pull the last text block — that's where the summary lives after tool
+    // calls finish.
     var textBlocks = (body.content || []).filter(function(b) { return b.type === 'text'; });
     if (!textBlocks.length) return { findings: [] };
     var content = textBlocks[textBlocks.length - 1].text;
@@ -874,11 +890,48 @@ function runRecencyCheck(documentText) {
       Logger.log('Recency check: could not extract JSON array. Raw response: ' + content.substring(0, 600));
       return { error: 'Claude returned a non-JSON response. See script logs for details.' };
     }
-    return { findings: parsed };
+    return { findings: parsed.map(sanitizeFinding_) };
   } catch (e) {
     Logger.log('Recency check exception: ' + e.message);
     return { error: 'Claude API failure: ' + e.message };
   }
+}
+
+/**
+ * Strip control characters and normalize whitespace in any string field of a
+ * recency finding. Editors saw stray characters in the rendered output;
+ * Claude sometimes emits zero-width / unprintable codepoints inside JSON
+ * strings that JSON.parse passes through unchanged.
+ */
+function sanitizeFinding_(finding) {
+  if (!finding || typeof finding !== 'object') return finding;
+  var out = {};
+  for (var k in finding) {
+    if (Object.prototype.hasOwnProperty.call(finding, k)) {
+      var v = finding[k];
+      out[k] = (typeof v === 'string') ? sanitizeText_(v) : v;
+    }
+  }
+  return out;
+}
+
+function sanitizeText_(s) {
+  if (!s) return s;
+  return String(s)
+    // Drop C0 controls and DEL except newline/tab.
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '')
+    // Drop zero-width spaces, BOM, soft hyphen, and other invisibles.
+    .replace(/[­​-‏ -  -⁯﻿]/g, '')
+    // Smart quotes / dashes / ellipsis -> ASCII.
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    // Non-breaking spaces -> regular spaces.
+    .replace(/ /g, ' ')
+    // Collapse runs of whitespace.
+    .replace(/[ \t]+/g, ' ')
+    .trim();
 }
 
 // ===========================================================================

@@ -74,7 +74,9 @@
     .link-card.status-partial { border-color: #f9ab00; background: #fff8e1; }
     .link-card.status-mismatch { border-color: #c5221f; background: #fce8e6; }
     .link-card.status-broken { border-color: #c5221f; background: #fce8e6; }
+    .link-card.status-unverifiable { border-color: #80868b; background: #f1f3f4; }
     .link-card.status-unknown { border-color: #dadce0; }
+    .link-card.status-error { border-color: #80868b; background: #f1f3f4; }
 
     .card-row {
       display: flex;
@@ -109,7 +111,39 @@
     .card-status.partial { background: #f9ab00; color: #202124; }
     .card-status.mismatch, .card-status.broken { background: #c5221f; color: #fff; }
     .card-status.unknown { background: #dadce0; color: #202124; }
+    .card-status.unverifiable, .card-status.error { background: #80868b; color: #fff; }
     .card-status.pending { background: #1a73e8; color: #fff; }
+
+    .summary {
+      font-size: 12px;
+      color: #5f6368;
+      padding: 8px 10px;
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .summary-line { display: block; }
+    .summary-line.attention { color: #c5221f; }
+    .summary-line.unverifiable { color: #80868b; }
+    .summary-line.ok { color: #137333; }
+    .show-ok-toggle {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #1a73e8;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .show-ok-toggle:hover { color: #1557b0; }
+    .group-heading {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #5f6368;
+      margin: 14px 0 6px;
+      font-weight: 600;
+    }
     .card-explanation {
       font-size: 12px;
       line-height: 1.4;
@@ -313,34 +347,104 @@
       showStatus('linkStatus', 'running', 'Stopping — waiting for ' + inFlightCount + ' in-flight verification' + (inFlightCount === 1 ? '' : 's') + '…');
     }
 
+    var showOkCards = false;
+
+    function toggleOkCards() {
+      showOkCards = !showOkCards;
+      renderLinks();
+    }
+
+    function renderLinkCard(link, idx) {
+      var verdict = link.verdict || { status: link.state === 'running' ? 'pending' : 'pending', explanation: '' };
+      var card = document.createElement('div');
+      card.className = 'link-card status-' + (verdict.status || 'unknown');
+
+      var html = '<div class="card-row">';
+      html += '<span class="card-anchor" onclick="goToLink(' + idx + ')">' + escHtml(link.anchorText || '(no anchor)') + '</span>';
+      html += '<span class="card-status ' + escHtml(verdict.status || 'pending') + '">' +
+        escHtml(verdict.status || 'pending') + '</span>';
+      html += '</div>';
+      html += '<div class="card-url">' + escHtml(link.url) + '</div>';
+
+      if (verdict.explanation) {
+        html += '<div class="card-explanation">' + escHtml(verdict.explanation) + '</div>';
+      }
+      if (verdict.suggestedAnchor) {
+        html += '<div class="card-explanation"><b>Suggested anchor:</b> ' + escHtml(verdict.suggestedAnchor) + '</div>';
+      }
+      if (link.context) {
+        html += '<div class="card-context">' + escHtml(link.context) + '</div>';
+      }
+
+      card.innerHTML = html;
+      return card;
+    }
+
     function renderLinks() {
       var container = document.getElementById('linkResults');
       container.innerHTML = '';
+
+      // Categorize each link by its current state.
+      var pending = [];
+      var attention = [];   // mismatch, broken, partial — needs human review
+      var unverifiable = []; // 401/403/429/network — link probably fine, can't read
+      var ok = [];           // ok or unknown w/ no concern
+
       links.forEach(function(link, idx) {
-        var verdict = link.verdict || { status: link.state === 'running' ? 'pending' : 'pending', explanation: '' };
-        var card = document.createElement('div');
-        card.className = 'link-card status-' + (verdict.status || 'unknown');
-
-        var html = '<div class="card-row">';
-        html += '<span class="card-anchor" onclick="goToLink(' + idx + ')">' + escHtml(link.anchorText || '(no anchor)') + '</span>';
-        html += '<span class="card-status ' + escHtml(verdict.status || 'pending') + '">' +
-          escHtml(verdict.status || 'pending') + '</span>';
-        html += '</div>';
-        html += '<div class="card-url">' + escHtml(link.url) + '</div>';
-
-        if (verdict.explanation) {
-          html += '<div class="card-explanation">' + escHtml(verdict.explanation) + '</div>';
+        var verdict = link.verdict;
+        if (!verdict) {
+          pending.push({ link: link, idx: idx });
+          return;
         }
-        if (verdict.suggestedAnchor) {
-          html += '<div class="card-explanation"><b>Suggested anchor:</b> ' + escHtml(verdict.suggestedAnchor) + '</div>';
-        }
-        if (link.context) {
-          html += '<div class="card-context">' + escHtml(link.context) + '</div>';
-        }
-
-        card.innerHTML = html;
-        container.appendChild(card);
+        var s = verdict.status;
+        if (s === 'ok') ok.push({ link: link, idx: idx });
+        else if (s === 'unverifiable' || s === 'error') unverifiable.push({ link: link, idx: idx });
+        else if (s === 'unknown') unverifiable.push({ link: link, idx: idx });
+        else attention.push({ link: link, idx: idx }); // partial, mismatch, broken
       });
+
+      // Summary block — visible as soon as any verdicts have come back.
+      var totalDone = attention.length + unverifiable.length + ok.length;
+      if (totalDone > 0 || pending.length > 0) {
+        var summary = document.createElement('div');
+        summary.className = 'summary';
+        var lines = [];
+        if (ok.length) {
+          lines.push('<span class="summary-line ok">' + ok.length + '/' + links.length + ' OK</span>');
+        }
+        if (attention.length) {
+          lines.push('<span class="summary-line attention">' + attention.length + ' need attention</span>');
+        }
+        if (unverifiable.length) {
+          lines.push('<span class="summary-line unverifiable">' + unverifiable.length + " couldn't be verified (paywalls, anti-bot, etc.)</span>");
+        }
+        if (pending.length) {
+          lines.push('<span class="summary-line">' + pending.length + ' verifying…</span>');
+        }
+        var html = lines.join('');
+        if (ok.length) {
+          html += '<span class="show-ok-toggle" onclick="toggleOkCards()">' +
+            (showOkCards ? 'Hide OK details' : 'Show OK details') + '</span>';
+        }
+        summary.innerHTML = html;
+        container.appendChild(summary);
+      }
+
+      function appendGroup(heading, group) {
+        if (!group.length) return;
+        var h = document.createElement('div');
+        h.className = 'group-heading';
+        h.textContent = heading;
+        container.appendChild(h);
+        group.forEach(function(entry) {
+          container.appendChild(renderLinkCard(entry.link, entry.idx));
+        });
+      }
+
+      appendGroup('Need attention', attention);
+      appendGroup("Couldn't verify", unverifiable);
+      appendGroup('Verifying…', pending);
+      if (showOkCards) appendGroup('OK', ok);
     }
 
     function goToLink(idx) {

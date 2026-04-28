@@ -24,8 +24,20 @@ var SKIP_LINK_HOSTS = {
   'accounts.google.com': true
 };
 
-var MAX_FETCHED_CHARS = 20000;
+var MAX_FETCHED_CHARS = 40000;
 var MAX_CONTEXT_CHARS = 600;
+
+// HTTP statuses that mean "we can't read this page" rather than "the page is
+// gone": auth walls, anti-bot blocks, rate limits, generic forbiddens. The
+// link is probably fine; we just couldn't verify it.
+var UNVERIFIABLE_HTTP_STATUSES = {
+  401: true,
+  402: true,
+  403: true,
+  407: true,
+  429: true,
+  451: true
+};
 
 // ---------------------------------------------------------------------------
 // Link enumeration
@@ -111,12 +123,14 @@ function extractContext_(paragraphText, start, end) {
  * { status, explanation, fetchedStatus, fetchedTitle, url, anchorText }.
  *
  * status values:
- *   - "ok"        — target clearly supports the claim
- *   - "partial"   — target is related but doesn't clearly support the claim
- *   - "mismatch"  — target does not support (or contradicts) the claim
- *   - "broken"    — fetch failed (404, timeout, 403, etc.)
- *   - "unknown"   — Claude couldn't tell from the fetched content
- *   - "error"     — internal error (bad config, API failure)
+ *   - "ok"            — target clearly supports the claim
+ *   - "partial"       — target is related but doesn't clearly support the claim
+ *   - "mismatch"      — target does not support (or contradicts) the claim
+ *   - "broken"        — fetch failed (404, timeout, 5xx, network error)
+ *   - "unverifiable"  — fetch was blocked (paywall, anti-bot 403, 429, etc.)
+ *                       — link is probably fine, we just can't read it
+ *   - "unknown"       — Claude couldn't tell from the fetched content
+ *   - "error"         — internal error (bad config, API failure)
  */
 function verifyLink(index) {
   var links = getDocumentExternalLinks();
@@ -128,7 +142,7 @@ function verifyLink(index) {
   var fetched = fetchUrlText_(link.url);
   if (fetched.error) {
     return {
-      status: 'broken',
+      status: fetched.unverifiable ? 'unverifiable' : 'broken',
       explanation: fetched.error,
       fetchedStatus: fetched.statusCode || null,
       url: link.url,
@@ -197,23 +211,31 @@ function fetchUrlText_(url) {
     });
     var status = response.getResponseCode();
     if (status >= 400) {
-      return { error: 'HTTP ' + status, statusCode: status };
+      return {
+        error: 'HTTP ' + status,
+        statusCode: status,
+        unverifiable: !!UNVERIFIABLE_HTTP_STATUSES[status]
+      };
     }
 
     var contentType = response.getHeaders()['Content-Type'] || response.getHeaders()['content-type'] || '';
     if (contentType && !/text|html|xml|json/i.test(contentType)) {
-      return { error: 'Non-text content: ' + contentType, statusCode: status };
+      return { error: 'Non-text content: ' + contentType, statusCode: status, unverifiable: true };
     }
 
     var html = response.getContentText();
     var title = extractTitle_(html);
     var text = stripHtml_(html);
+    var truncated = false;
     if (text.length > MAX_FETCHED_CHARS) {
       text = text.substring(0, MAX_FETCHED_CHARS) + '…';
+      truncated = true;
     }
-    return { statusCode: status, title: title, text: text };
+    return { statusCode: status, title: title, text: text, truncated: truncated };
   } catch (e) {
-    return { error: 'Fetch failed: ' + e.message };
+    // Network errors (DNS, TLS, timeout) are also recoverable for the human
+    // reader — flag them as unverifiable rather than broken.
+    return { error: 'Fetch failed: ' + e.message, unverifiable: true };
   }
 }
 

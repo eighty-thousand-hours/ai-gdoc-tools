@@ -699,19 +699,23 @@ var LINK_VERIFICATION_SYSTEM_PROMPT = [
   'The user gives you:',
   '  - The surrounding sentence(s) from the draft (the "claim").',
   '  - The anchor text of the hyperlink.',
-  '  - The extracted text of the target page.',
+  '  - The extracted text of the target page (may be truncated — the user will tell you).',
   '',
   'Assess whether the target page substantively supports, partially supports, or does not support the claim.',
   'Be generous about structural variation (e.g. the target may use different phrasing) but strict about factual fit.',
   '',
+  'BIAS TOWARD "ok" WHEN UNCERTAIN. The default assumption is that an Epoch editor placed this link deliberately. Flag a problem only when you have positive evidence that the target does not support the claim — not when you simply cannot find the supporting passage.',
+  '',
   'Return a JSON object with exactly these fields:',
   '  - "status": one of "ok" | "partial" | "mismatch" | "unknown"',
-  '      * "ok"       — target clearly attests to the claim',
-  '      * "partial"  — target is topically related and loosely supports, but doesn\'t directly attest',
-  '      * "mismatch" — target does not support, or actively contradicts, the claim',
-  '      * "unknown"  — target text is too thin (redirect, paywall, JS-only page) to judge',
+  '      * "ok"       — target clearly attests to the claim, OR the page is plausibly the right reference and you have no evidence against it',
+  '      * "partial"  — target is topically related and loosely supports, but doesn\'t directly attest (use sparingly)',
+  '      * "mismatch" — target actively contradicts the claim, or is clearly about a different topic',
+  '      * "unknown"  — target text is too thin (redirect, paywall, JS-only page) to judge, OR the extracted text was truncated and the supporting passage is plausibly later in the page',
   '  - "explanation": one short sentence stating the reason for the status',
   '  - "suggestedAnchor": optional — a tighter anchor-text phrase if the current one is vague or misleading (omit or null otherwise)',
+  '',
+  'Important: if the user notes the target text was truncated, do NOT issue "partial" or "mismatch" just because the supporting passage was missing — return "unknown" or "ok".',
   '',
   'Return ONLY the JSON object. No markdown, no commentary.'
 ].join('\n');
@@ -727,6 +731,12 @@ function runLinkVerificationLLM(link, fetched) {
   }
   var model = config.model || provider.defaultModel;
 
+  var pageTextHeader = '## Target page extracted text';
+  if (fetched.truncated) {
+    pageTextHeader += ' (TRUNCATED to first ~' + (fetched.text ? fetched.text.length : 0) +
+      ' chars — supporting passage may appear later; default to "unknown" or "ok" if you cannot find evidence either way)';
+  }
+
   var user = [
     '## Claim (from the draft)',
     link.context,
@@ -740,7 +750,7 @@ function runLinkVerificationLLM(link, fetched) {
     '## Target page title',
     fetched.title || '(no title)',
     '',
-    '## Target page extracted text',
+    pageTextHeader,
     fetched.text || '(empty)'
   ].join('\n');
 

@@ -9,11 +9,15 @@
  */
 
 // Field labels we know how to populate. Keys are canonical names; values are
-// regex fragments matched against the label cell (case-insensitive).
+// regex fragments matched against the label cell's first line (case-insensitive).
+// Patterns end at a word boundary so labels like "Tags (any number of tags)"
+// or "Meta description (optional for authors; ops can fill this in)" still
+// resolve to the canonical field — the parenthetical is treated as a hint to
+// authors, not part of the field name.
 var METADATA_FIELDS = {
-  tags: /^(tags?|topics?)\s*$/i,
-  htmlTitle: /^(html\s*title|seo\s*title|title\s*\(html\)|title\s*tag)\s*$/i,
-  htmlMeta: /^(html\s*meta|meta\s*description|seo\s*description|description\s*\(html\)|meta)\s*$/i
+  tags: /^(tags?|topics?)\b/i,
+  htmlTitle: /^(html\s*title|seo\s*title|title\s*\(html\)|title\s*tag)\b/i,
+  htmlMeta: /^(html\s*meta|meta\s*description|seo\s*description|description\s*\(html\)|meta)\b/i
 };
 
 // ---------------------------------------------------------------------------
@@ -83,11 +87,15 @@ function matchMetadataRows_(table) {
   for (var r = 0; r < numRows; r++) {
     var row = table.getRow(r);
     if (row.getNumCells() < 2) continue;
-    var label = row.getCell(0).getText().trim();
-    if (!label) continue;
+    var fullLabel = row.getCell(0).getText().trim();
+    if (!fullLabel) continue;
+    // Match only against the first line — Epoch's templates put the field
+    // name on line 1 and helper text ("Please use available tags…") in
+    // subsequent paragraphs of the same cell.
+    var firstLine = fullLabel.split(/\n+/)[0].trim();
     var field = null;
     for (var k in METADATA_FIELDS) {
-      if (METADATA_FIELDS[k].test(label)) {
+      if (METADATA_FIELDS[k].test(firstLine)) {
         field = k;
         break;
       }
@@ -96,7 +104,7 @@ function matchMetadataRows_(table) {
     matched.push({
       rowIndex: r,
       field: field,
-      label: label,
+      label: firstLine,
       currentValue: row.getCell(1).getText().trim()
     });
   }

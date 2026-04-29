@@ -189,11 +189,14 @@ function applyAltTextToImage(index, altDescription) {
 }
 
 /**
- * Insert (or update) a paragraph reading "[alt text]" directly below the
- * paragraph that contains the image. We replace an existing paragraph only if
- * its contents match "[<previousAlt>]" — that way repeated Apply clicks stay
- * idempotent without accidentally overwriting unrelated bracketed text the
- * user might have placed there manually (e.g. "[citation needed]").
+ * Insert (or update) a paragraph reading "[alt text: <text>]" directly below
+ * the paragraph that contains the image. We replace an existing paragraph only
+ * if its contents match a previous alt-text paragraph we wrote — either the
+ * current "[alt text: <previousAlt>]" form or the legacy "[<previousAlt>]"
+ * form (for docs written before the prefix was added). That way repeated
+ * Apply clicks stay idempotent without accidentally overwriting unrelated
+ * bracketed text the user might have placed there manually (e.g.
+ * "[citation needed]").
  */
 function writeBracketedAltBelowImage_(image, alt, previousAlt) {
   var paragraph = findImageParagraph_(image);
@@ -206,14 +209,17 @@ function writeBracketedAltBelowImage_(image, alt, previousAlt) {
   }
 
   var pos = container.getChildIndex(paragraph);
-  var bracketed = '[' + alt + ']';
+  var bracketed = '[alt text: ' + alt + ']';
 
   var nextChild = (pos + 1 < container.getNumChildren()) ? container.getChild(pos + 1) : null;
   if (nextChild && nextChild.getType() === DocumentApp.ElementType.PARAGRAPH) {
     var nextPara = nextChild.asParagraph();
     var nextText = nextPara.getText().trim();
-    var prevBracketed = previousAlt ? ('[' + previousAlt + ']') : null;
-    if ((prevBracketed && nextText === prevBracketed) || nextText === bracketed) {
+    var prevBracketed = previousAlt ? ('[alt text: ' + previousAlt + ']') : null;
+    var legacyBracketed = previousAlt ? ('[' + previousAlt + ']') : null;
+    if ((prevBracketed && nextText === prevBracketed) ||
+        (legacyBracketed && nextText === legacyBracketed) ||
+        nextText === bracketed) {
       nextPara.clear();
       nextPara.appendText(bracketed);
       return true;

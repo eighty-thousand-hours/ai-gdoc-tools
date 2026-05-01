@@ -3,9 +3,8 @@
  *
  * Finds the metadata table in the active document (typically in a dedicated
  * "Metadata" tab) and auto-fills empty fields: Tags, HTML title, HTML meta.
- * Per the 2026-04-24 meeting with Elliot, the workflow is hybrid: humans fill
- * in fields that matter; the automation fills the rest as sensible defaults
- * that can be overridden.
+ * The workflow is hybrid by design: humans fill in fields that matter; the
+ * automation fills the rest as sensible defaults that can be overridden.
  */
 
 // Field labels we know how to populate. Keys are canonical names; values are

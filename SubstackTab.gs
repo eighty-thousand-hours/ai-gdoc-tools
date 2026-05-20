@@ -46,7 +46,7 @@ function showCreateSubstackTabDialog() {
     </style>
     <div class="header">
       <h2>Prepare for Substack</h2>
-      <div class="subtitle">Click this when your draft is ready to post on Substack. Creates a copy in a new tab that you can paste straight into a Substack draft. Once pasted, use the 80k Substack Helper Chrome extension to finish the conversion.</div>
+      <div class="subtitle">Click this when your draft is ready to post on Substack. Creates a copy in a new tab that you can paste straight into a Substack draft. Once pasted, use the 80k Substack Helper Chrome extension to finish the conversion. <a href="https://docs.google.com/document/d/1u_CIJ0YLvQU1qcJ8z-7dQZ0U-4T9ceP-ytwoTq-6zcQ/edit?tab=t.0#heading=h.j9cvfvsu9lg" target="_blank">Download the extension + full instructions →</a></div>
     </div>
 
     <div class="note">This tool treats all suggestions in the original tab as accepted.</div>

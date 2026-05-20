@@ -75,15 +75,11 @@ WordPress export (required for image uploads in the Prepare for WordPress tool):
 | Property | Value |
 |---|---|
 | `WP_BASE_URL` | e.g. `https://80000hours.org` |
-| `WP_CREDENTIALS` | `username:application_password` |
+| `WP_CREDENTIALS` | `email:password` (e.g. `api-user@80000hours.org:thepassword`) |
 
 The WordPress tool has a **Debug WordPress connection** panel in the sidebar that verifies credentials without doing a full export.
 
 ## Testing
-
-Two Google Docs are maintained for manual regression testing:
-
-- **Kitchen sink** — [doc `1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk`](https://docs.google.com/document/d/1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk/edit). Exhaustive per-rule test cases for the Style checker. **Whenever a new rule is added to `StyleRules.gs`, add a matching test case here.** Also the Google Doc that hosts the container-bound dev script, so `clasp push` against `.clasp.json.container-bound` updates this doc directly.
 
 ## Known limitations
 

@@ -11,7 +11,12 @@
       color: #202124;
       padding: 16px;
       background: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
+    .beta-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid #dadce0; font-size: 11px; color: #5f6368; text-align: center; line-height: 1.7; }
+    .beta-footer .badge { display: inline-block; background: #fef7e0; color: #b06000; font-weight: 600; font-size: 9px; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; margin-right: 4px; vertical-align: 1px; }
 
     .header { margin-bottom: 16px; }
     .header h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
@@ -183,33 +188,36 @@
 </head>
 <body>
 
+  <? var activeTool = (typeof tool !== 'undefined') ? tool : 'links'; ?>
+
   <div class="header">
-    <h2>Research helper</h2>
-    <div class="subtitle">Verify hyperlinks and check for recent developments that contradict claims in the draft.</div>
+    <h2><?= activeTool === 'recency' ? 'Flag stale claims' : 'Test and fact-check links' ?></h2>
   </div>
 
-  <div class="tabs">
-    <div class="tab active" id="tab-links" onclick="switchTab('links')">Link verification</div>
-    <div class="tab" id="tab-recency" onclick="switchTab('recency')">Recency check</div>
-  </div>
-
-  <!-- Link verification pane -->
+  <? if (activeTool === 'links') { ?>
   <div class="pane active" id="pane-links">
+    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Checks that every external link actually loads (no 404s or broken pages), then uses AI to verify each linked page genuinely supports the claim it's attached to. (Uses AI)</div>
     <div class="controls">
-      <button class="btn btn-primary" id="btnLinks" onclick="startLinkVerification()">Verify links</button>
+      <button class="btn btn-primary" id="btnLinks" onclick="startLinkVerification()">Test and fact-check links</button>
       <button class="btn btn-secondary" id="btnLinksStop" onclick="stopLinkVerification()" style="display:none">Stop</button>
     </div>
     <div class="status" id="linkStatus"></div>
     <div id="linkResults"></div>
   </div>
-
-  <!-- Recency check pane -->
-  <div class="pane" id="pane-recency">
+  <? } else { ?>
+  <div class="pane active" id="pane-recency">
+    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Uses AI with web search to find developments in the last ~14 days that contradict or update claims in the draft. (Uses AI)</div>
     <div class="controls">
       <button class="btn btn-primary" id="btnRecency" onclick="runRecency()">Check for recent developments</button>
     </div>
     <div class="status" id="recencyStatus"></div>
     <div id="recencyResults"></div>
+  </div>
+  <? } ?>
+
+  <div class="beta-footer">
+    <span class="badge">Beta</span>
+    Send bugs and ideas to Valerie
   </div>
 
   <script>

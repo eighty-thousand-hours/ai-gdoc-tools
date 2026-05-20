@@ -1,5 +1,5 @@
 /**
- * Epoch AI — LLM integration
+ * 80,000 Hours — LLM integration
  *
  * Supports both Anthropic (Claude) and OpenAI APIs.
  * Used for editorial style checking and internal link suggestions.
@@ -7,6 +7,127 @@
  */
 
 var MAX_DOCUMENT_CHARS = 30000;
+
+// ---------------------------------------------------------------------------
+// Style guide fetch (cached)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the editorial style guide from a Google Doc and return it as plain text.
+ * Cached for 6 hours. Returns empty string if not configured or on error.
+ *
+ * Script Properties required:
+ *   STYLE_GUIDE_URL  — Google Doc URL or bare doc ID
+ */
+function getStyleGuideText_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('style_guide_text');
+  if (cached) return cached;
+
+  var url = PropertiesService.getScriptProperties().getProperty('STYLE_GUIDE_URL');
+  if (!url) return '';
+
+  try {
+    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    var docId = match ? match[1] : url;
+    var text = DocumentApp.openById(docId).getBody().getText().trim();
+    if (text) cache.put('style_guide_text', text, 21600);
+    return text;
+  } catch (e) {
+    Logger.log('Style guide fetch error: ' + e.message);
+    return '';
+  }
+}
+
+/**
+ * Fetch the 80k shortcode guide from WordPress and return it as plain text.
+ * Cached for 6 hours. Returns an empty string if not configured or on error.
+ *
+ * Script Properties required:
+ *   SHORTCODE_GUIDE_URL  — Google Doc URL or bare doc ID
+ */
+function getShortcodeGuideText_() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('shortcode_guide_text');
+  if (cached) return cached;
+
+  var url = PropertiesService.getScriptProperties().getProperty('SHORTCODE_GUIDE_URL');
+  if (!url) return '';
+
+  try {
+    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    var docId = match ? match[1] : url;
+    var text = DocumentApp.openById(docId).getBody().getText().trim();
+    if (text) cache.put('shortcode_guide_text', text, 21600);
+    return text;
+  } catch (e) {
+    Logger.log('Shortcode guide fetch error: ' + e.message);
+    return '';
+  }
+}
+
+/**
+ * Debug helpers — bypass cache and return fetch results for the sidebar Advanced panel.
+ */
+function getStyleGuideDebug() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('style_guide_text');
+  if (cached) return { text: cached, cached: true };
+
+  var url = PropertiesService.getScriptProperties().getProperty('STYLE_GUIDE_URL');
+  if (!url) return { text: '', error: 'STYLE_GUIDE_URL not set in Script Properties.' };
+
+  try {
+    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    var docId = match ? match[1] : url;
+    var text = DocumentApp.openById(docId).getBody().getText().trim();
+    return { text: text, cached: false };
+  } catch (e) {
+    return { text: '', error: e.message };
+  }
+}
+
+function getShortcodeGuideDebug() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('shortcode_guide_text');
+  if (cached) return { text: cached, cached: true };
+
+  var url = PropertiesService.getScriptProperties().getProperty('SHORTCODE_GUIDE_URL');
+  if (!url) return { text: '', error: 'SHORTCODE_GUIDE_URL not set in Script Properties.' };
+
+  try {
+    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    var docId = match ? match[1] : url;
+    var text = DocumentApp.openById(docId).getBody().getText().trim();
+    return { text: text, cached: false };
+  } catch (e) {
+    return { text: '', error: e.message };
+  }
+}
+
+/**
+ * Return the current AI system prompt — custom override if set, otherwise the built-in base.
+ */
+function getSystemPrompt() {
+  var custom = PropertiesService.getScriptProperties().getProperty('CUSTOM_SYSTEM_PROMPT');
+  return custom || STYLE_GUIDE_SYSTEM_PROMPT_BASE;
+}
+
+/**
+ * Save a custom AI system prompt to Script Properties.
+ */
+function saveSystemPrompt(text) {
+  PropertiesService.getScriptProperties().setProperty('CUSTOM_SYSTEM_PROMPT', text);
+}
+
+/**
+ * Delete the custom prompt override, reverting to the built-in base.
+ * Returns the base prompt so the sidebar can display it immediately.
+ */
+function resetSystemPrompt() {
+  PropertiesService.getScriptProperties().deleteProperty('CUSTOM_SYSTEM_PROMPT');
+  return STYLE_GUIDE_SYSTEM_PROMPT_BASE;
+}
 
 // ---------------------------------------------------------------------------
 // Provider configurations
@@ -104,36 +225,46 @@ function configureLLM(config) {
 // System prompt
 // ---------------------------------------------------------------------------
 
-var STYLE_GUIDE_SYSTEM_PROMPT = [
-  'You are an editorial assistant for Epoch AI, a nonprofit research institute that tracks and forecasts AI development through empirical, data-driven methods.',
-  'Your job is to review text against Epoch\'s style guide (v3.0) and flag stylistic issues that a regex-based checker cannot catch.',
+var STYLE_GUIDE_SYSTEM_PROMPT_BASE = [
+  'You are an editorial assistant for 80,000 Hours, a nonprofit that researches how people can use their careers to help solve the world\'s most pressing problems.',
+  'Your job is to flag stylistic issues that a regex-based checker cannot catch.',
   '',
-  'EPOCH VOICE: Authoritative but accessible. Empirical and evidence-based. Avoids hype, speculation, and unsubstantiated claims.',
-  'First-person plural ("we") in papers, reports, Data Insights, social media. First-person singular ("I") allowed in Gradient Updates and podcasts.',
+  'TARGET AUDIENCE: People aged ~18–45, educated, analytical, and altruistic — but NOT necessarily familiar with effective altruism, AI safety, or related communities. Assume the reader has not encountered these ideas before.',
   '',
-  'Focus ONLY on issues that require human/LLM judgment — things a regex cannot detect:',
+  '80K VOICE: Clear, direct, bold, and plain. Short, punchy sentences. Information-dense without being academic. Evidence-based with appropriate epistemic humility. Not preachy or moralising.',
+  '- Use "we" as the default for problem profiles, career reviews, skills articles, and career guide content.',
+  '- Use "I" for blog posts, personal reflections, surprising observations, or takes the org cannot fully stand behind.',
+  '- Avoid switching between "we" and "I" too frequently within a section or paragraph.',
   '',
-  '1. TONE: Flag hype language ("breakthrough", "revolutionary", "game-changing", "unprecedented"), unsubstantiated superlatives ("the best", "the most"), or overly casual/sensational phrasing for research content.',
-  '2. HEDGING: Claims should be qualified appropriately ("suggests" not "proves", "indicates" not "demonstrates", "appears to" not "clearly"). Flag both under-hedging (overclaiming) and excessive hedging that weakens the writing.',
-  '3. CLARITY: Flag ambiguous pronoun references where the antecedent is unclear, overly long sentences (>40 words), paragraphs making too many unrelated points, and jargon used without explanation on first reference.',
-  '4. VOICE: Flag passive voice where active voice would be clearer and the actor is known. Flag "they"/"their" referring to a singular company mentioned in a PRIOR sentence (e.g. "Google released Gemini. They said..." should be "...It said...").',
-  '5. PRECISION: Flag vague quantifiers ("many", "significant", "large", "substantial", "a number of", "various") when a specific number or comparison would be more informative. Flag "percent" vs "percentage points" confusion.',
-  '6. STRUCTURE: Flag "which" used restrictively without a preceding comma (should be "that"). Flag dangling modifiers. Flag unclear parallel structure in lists.',
+  'Focus ONLY on issues requiring human/LLM judgment — things a regex cannot detect:',
   '',
-  'IMPORTANT — Do NOT flag any of the following (they are already handled by a deterministic checker):',
-  '- Spelling, terminology, glossary terms, or brand name capitalization',
-  '- FLOP/FLOPs notation',
+  '1. STRUCTURE: Flag if the piece lacks a clear, specific thesis near the opening. A weak thesis ("X is important") should be "X is better than Y" or "Many think Z, but actually Y". Flag if the main argument lacks clear premises (aim for 3–5 that support the thesis). Flag if the piece does not address the strongest counterarguments. Flag if practical career next steps are vague or absent — they should be specific (e.g. "apply to X fellowship, then read Y").',
+  '',
+  '2. CONCISION: Flag non-essential points that do not directly support the thesis. Flag repetition or restatement of ideas already made. Flag lengthy supporting material that should be a footnote. Flag cases where a point could be replaced by simply linking to an external source.',
+  '',
+  '3. TONE: Flag hype language ("breakthrough", "revolutionary", "game-changing", "unprecedented") and unsubstantiated superlatives. Flag EA or academic jargon used without explanation (e.g. "counterfactual impact", "longtermism", "s-risk", "epistemic") — assume no EA background.',
+  '',
+  '4. HEDGING: Claims should be qualified appropriately ("suggests" not "proves", "indicates" not "demonstrates"). Flag both under-hedging (overclaiming) and excessive hedging that weakens the writing. Uncertainty should be acknowledged but not used as a crutch.',
+  '',
+  '5. CLARITY: Flag ambiguous pronoun references, overly long sentences (>40 words), paragraphs making too many unrelated points. Flag assumed knowledge — the piece should explain fundamentals rather than assuming familiarity.',
+  '',
+  '6. VOICE: Flag passive voice where active would be clearer and the actor is known. Flag inconsistent we/I usage within a section. Flag "they"/"their" referring to a singular company mentioned in a PRIOR sentence.',
+  '',
+  '7. PRECISION: Flag vague quantifiers ("many", "significant", "large", "various") when a specific number or comparison would be more informative. Flag "percent" vs "percentage points" confusion.',
+  '',
+  'IMPORTANT — Do NOT flag any of the following (already handled by a deterministic checker):',
+  '- Spelling, terminology, glossary terms, or brand name capitalisation',
   '- Filler phrases ("in order to", "it should be noted", etc.)',
-  '- Contractions, exclamation points, or other punctuation issues',
+  '- Punctuation issues, contractions, or exclamation points',
   '- Number formatting, date formatting, or unit abbreviations',
-  '- Hyphenation of -ly adverbs (e.g. "highly-accurate" is already caught)',
-  '- Company pronoun usage when the company name appears in the SAME sentence (already caught)',
-  '- Timezone abbreviations, decade apostrophes, ellipsis formatting',
-  '- a.m./p.m. formatting, en dash for ranges, multiplication signs',
-  '- Any issue that can be detected by pattern matching or regex',
+  '- Hyphenation of -ly adverbs, en dashes, ellipsis characters, or multiplication signs',
+  '- Any issue detectable by pattern matching or regex',
   '',
-  'Be selective. Only flag issues where your suggestion genuinely improves the writing. Aim for 3-8 high-value suggestions per document, not an exhaustive list.',
-  '',
+  'Be selective. Only flag issues where your suggestion genuinely improves the writing. Aim for 3–8 high-value suggestions per document, not an exhaustive list.'
+].join('\n');
+
+// Not user-editable — defines the required output format for the parser.
+var STYLE_GUIDE_OUTPUT_FORMAT = [
   'Return your response as a JSON array of objects, each with:',
   '  - "excerpt": the exact text span with the issue (20-60 chars, must be a verbatim substring of the input)',
   '  - "message": a concise explanation citing the relevant style guide principle',
@@ -143,6 +274,17 @@ var STYLE_GUIDE_SYSTEM_PROMPT = [
   '',
   'Return ONLY the JSON array. No markdown, no commentary. If no issues found, return [].'
 ].join('\n');
+
+function buildStyleCheckPrompt_() {
+  var base = getSystemPrompt();
+  var styleGuide = getStyleGuideText_();
+  var shortcodeGuide = getShortcodeGuideText_();
+  var prompt = base;
+  if (styleGuide) prompt += '\n\n## 80,000 Hours editorial style guide\n\n' + styleGuide;
+  if (shortcodeGuide) prompt += '\n\n## 80,000 Hours shortcode guide\n\n' + shortcodeGuide;
+  prompt += '\n\n' + STYLE_GUIDE_OUTPUT_FORMAT;
+  return prompt;
+}
 
 // ---------------------------------------------------------------------------
 // Main LLM check
@@ -186,8 +328,8 @@ function runLLMCheck(documentText) {
     text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
   }
 
-  var userMessage = 'Review the following document for stylistic issues according to the Epoch AI style guide:\n\n' + text;
-  var options = provider.buildRequest(config.apiKey, model, STYLE_GUIDE_SYSTEM_PROMPT, userMessage);
+  var userMessage = 'Review the following document for stylistic issues according to the 80,000 Hours style guide:\n\n' + text;
+  var options = provider.buildRequest(config.apiKey, model, buildStyleCheckPrompt_(), userMessage);
 
   try {
     var response = UrlFetchApp.fetch(provider.url, options);
@@ -348,12 +490,12 @@ function findExcerptLocation_(excerpt, paragraphs) {
 // Internal link suggestions
 // ===========================================================================
 
-var LINK_BASE_URL = 'https://epoch.ai';
+var LINK_BASE_URL = 'https://80000hours.org';
 
 var LINK_SUGGESTION_SYSTEM_PROMPT = [
-  'You are an internal linking assistant for Epoch AI, a nonprofit research institute that tracks and forecasts AI development.',
+  'You are an internal linking assistant for 80,000 Hours, a nonprofit that researches how to have a high-impact career.',
   '',
-  'Your job is to identify phrases in a draft document that should link to existing Epoch publications. Good internal links:',
+  'Your job is to identify phrases in a draft document that should link to existing 80,000 Hours articles. Good internal links:',
   '- Connect the reader to relevant deeper analysis or data',
   '- Use natural anchor text (the phrase the author already wrote, not forced keyword stuffing)',
   '- Point to publications with substantive topical overlap',
@@ -451,11 +593,7 @@ function buildCatalogSummary_() {
   var catalog = getCatalog();
   var lines = [];
   for (var i = 0; i < catalog.length; i++) {
-    var entry = catalog[i];
-    var line = '- ' + entry.path + ' | ' + entry.title + ' | ' + entry.contentType;
-    if (entry.tags) line += ' | Tags: ' + entry.tags;
-    if (entry.description) line += ' | ' + entry.description;
-    lines.push(line);
+    lines.push('- ' + catalog[i].path + ' | ' + catalog[i].title);
   }
   return lines.join('\n');
 }
@@ -513,78 +651,6 @@ function parseLinkSuggestions_(responseText, documentText) {
   }
 
   return suggestions;
-}
-
-// ===========================================================================
-// Related work suggestions
-// ===========================================================================
-
-var RELATED_WORK_SYSTEM_PROMPT = [
-  'You are helping curate "Related work" links for a blog post on Epoch AI\'s website (epoch.ai).',
-  'Epoch is a nonprofit research institute that tracks and forecasts AI development through empirical, data-driven methods.',
-  '',
-  'Given a blog post draft and a catalog of all publications on the site, suggest the 3-5 most relevant',
-  'related publications that a reader of this article would find valuable. These will appear in a',
-  '"Related work" section at the end of the published article. Choose publications that:',
-  '- Cover closely related topics, methods, or datasets',
-  '- Would help a reader deepen their understanding of the subject',
-  '- Have substantive topical overlap (not just shared tags)',
-  '- Span different content types when relevant (blog posts, data insights, gradient updates)',
-  '',
-  'IMPORTANT: Only suggest paths that appear exactly in the catalog. Do not invent or guess paths.',
-  '',
-  'Return your response as a JSON array of objects, each with:',
-  '  - "path": the path of the suggested publication (must be from the catalog)',
-  '  - "title": the title of the publication',
-  '  - "reason": a brief explanation of why this is relevant (1 sentence)',
-  '',
-  'Return ONLY the JSON array. No markdown, no commentary. If no good matches exist, return [].'
-].join('\n');
-
-function runRelatedWorkSuggestion(documentText) {
-  var config = getLinksLLMConfig_();
-  if (!config.apiKey) {
-    return [{
-      error: true,
-      message: 'Links API key not configured. Set LINKS_API_KEY in Script Properties.'
-    }];
-  }
-
-  var provider = PROVIDERS[config.provider];
-  if (!provider) {
-    return [{ error: true, message: 'Unknown LLM provider: "' + config.provider + '".' }];
-  }
-
-  var model = config.model || provider.defaultModel;
-
-  var text = documentText;
-  if (text.length > MAX_DOCUMENT_CHARS) {
-    text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
-  }
-
-  var catalogSummary = buildCatalogSummary_();
-  var userMessage = '## Catalog of Epoch publications\n\n' + catalogSummary +
-    '\n\n## Blog post draft to find related work for\n\n' + text;
-
-  var options = provider.buildRequest(config.apiKey, model, RELATED_WORK_SYSTEM_PROMPT, userMessage);
-
-  try {
-    var response = UrlFetchApp.fetch(provider.url, options);
-    var statusCode = response.getResponseCode();
-    if (statusCode !== 200) {
-      Logger.log('Related work API error: ' + statusCode + ' \u2014 ' + response.getContentText());
-      return [{ error: true, message: 'LLM API returned HTTP ' + statusCode + '.' }];
-    }
-
-    var body = JSON.parse(response.getContentText());
-    var content = provider.extractContent(body);
-    if (!content) return [];
-
-    return parseRelatedWorkSuggestions_(content);
-  } catch (e) {
-    Logger.log('Related work API exception: ' + e.message);
-    return [{ error: true, message: 'Failed to reach the LLM API: ' + e.message }];
-  }
 }
 
 // ===========================================================================
@@ -694,7 +760,7 @@ function runAltTextGeneration(imageBlob, surroundingText, caption) {
 // ===========================================================================
 
 var LINK_VERIFICATION_SYSTEM_PROMPT = [
-  'You verify whether a hyperlink in an Epoch AI draft points to a page that actually supports the claim the draft is making.',
+  'You verify whether a hyperlink in an 80,000 Hours draft points to a page that actually supports the claim the draft is making.',
   '',
   'The user gives you:',
   '  - The surrounding sentence(s) from the draft (the "claim").',
@@ -704,7 +770,7 @@ var LINK_VERIFICATION_SYSTEM_PROMPT = [
   'Assess whether the target page substantively supports, partially supports, or does not support the claim.',
   'Be generous about structural variation (e.g. the target may use different phrasing) but strict about factual fit.',
   '',
-  'BIAS TOWARD "ok" WHEN UNCERTAIN. The default assumption is that an Epoch editor placed this link deliberately. Flag a problem only when you have positive evidence that the target does not support the claim — not when you simply cannot find the supporting passage.',
+  'BIAS TOWARD "ok" WHEN UNCERTAIN. The default assumption is that an 80k editor placed this link deliberately. Flag a problem only when you have positive evidence that the target does not support the claim — not when you simply cannot find the supporting passage.',
   '',
   'Return a JSON object with exactly these fields:',
   '  - "status": one of "ok" | "partial" | "mismatch" | "unknown"',
@@ -791,8 +857,8 @@ function runLinkVerificationLLM(link, fetched) {
 // ===========================================================================
 
 var RECENCY_CHECK_SYSTEM_PROMPT = [
-  'You help an Epoch AI draft avoid stale facts before publication.',
-  'Epoch AI is a nonprofit AI research institute; its articles cite empirical numbers, lab releases, benchmarks, model parameters, company actions, and policy events.',
+  'You help an 80,000 Hours draft avoid stale facts before publication.',
+  '80,000 Hours is a nonprofit that researches careers with high social impact; its articles cover AI safety, global health, policy, career advice, and effective altruism.',
   '',
   'You will be given a draft article. Use the web_search tool to look for developments in the last 14 days that would:',
   '  - contradict a factual claim in the draft (a number has moved, a release was withdrawn, a policy changed),',
@@ -1086,43 +1152,3 @@ function runMetadataGeneration(documentText, availableTags, metadataRows) {
   }
 }
 
-function parseRelatedWorkSuggestions_(responseText) {
-  var suggestions = [];
-
-  try {
-    var cleaned = responseText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    var parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (jsonErr) {
-      var repaired = cleaned.replace(/,\s*([\]}])/g, '$1');
-      parsed = JSON.parse(repaired);
-    }
-    if (!Array.isArray(parsed)) return [];
-
-    var validPaths = {};
-    var catalog = getCatalog();
-    for (var c = 0; c < catalog.length; c++) {
-      validPaths[catalog[c].path] = true;
-    }
-
-    for (var i = 0; i < parsed.length; i++) {
-      var item = parsed[i];
-      if (!item.path) continue;
-      if (!validPaths[item.path]) {
-        Logger.log('Filtered invalid related work path: ' + item.path);
-        continue;
-      }
-      suggestions.push({
-        path: item.path,
-        title: item.title || '',
-        url: LINK_BASE_URL + item.path,
-        reason: item.reason || ''
-      });
-    }
-  } catch (e) {
-    Logger.log('Failed to parse related work suggestions: ' + e.message);
-  }
-
-  return suggestions;
-}

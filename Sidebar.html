@@ -12,6 +12,13 @@
       padding: 16px;
       background: #fff;
     }
+    #mainUI {
+      display: flex;
+      flex-direction: column;
+      min-height: calc(100vh - 32px);
+    }
+    .beta-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid #dadce0; font-size: 11px; color: #5f6368; text-align: center; line-height: 1.7; }
+    .beta-footer .badge { display: inline-block; background: #fef7e0; color: #b06000; font-weight: 600; font-size: 9px; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; margin-right: 4px; vertical-align: 1px; }
 
     /* Header */
     .header {
@@ -254,6 +261,48 @@
     .auth-error ol { margin: 8px 0 0 20px; color: #202124; }
     .auth-error li { margin-bottom: 4px; }
 
+    /* Advanced panel */
+    .advanced-toggle {
+      margin-top: 20px;
+      font-size: 11px;
+      color: #5f6368;
+      cursor: pointer;
+      user-select: none;
+      border-top: 1px solid #dadce0;
+      padding-top: 12px;
+    }
+    .advanced-toggle:hover { color: #1a73e8; }
+    .advanced-panel { margin-top: 12px; }
+    .adv-section { margin-bottom: 16px; }
+    .adv-label { font-size: 12px; font-weight: 500; margin-bottom: 4px; color: #202124; }
+    .adv-hint { font-size: 11px; color: #5f6368; margin-bottom: 8px; line-height: 1.4; }
+    .prompt-textarea {
+      width: 100%;
+      font-family: 'Google Sans Mono', monospace;
+      font-size: 10px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 8px;
+      resize: vertical;
+      color: #202124;
+    }
+    .adv-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .adv-status { font-size: 11px; margin-top: 6px; min-height: 14px; }
+    .debug-text {
+      font-size: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+      display: none;
+      line-height: 1.4;
+    }
+
     /* AI badge */
     .ai-badge {
       font-size: 9px;
@@ -276,15 +325,15 @@
     <strong>Multi-account conflict detected</strong>
     This add-on can't communicate with Google Docs because you have multiple Google accounts signed in.
     <ol>
-      <li>Open this document in a <b>dedicated Chrome profile</b> that only has your Epoch account signed in</li>
-      <li>Or open it in an <b>incognito window</b> and sign in with your Epoch account only</li>
+      <li>Open this document in a <b>dedicated Chrome profile</b> that only has your 80,000 Hours account signed in</li>
+      <li>Or open it in an <b>incognito window</b> and sign in with your 80,000 Hours account only</li>
     </ol>
   </div>
 
   <div id="mainUI">
   <div class="header">
-    <h2>Style checker</h2>
-    <div class="subtitle">Style guide compliance checker</div>
+    <h2>Style &amp; shortcode check</h2>
+    <div class="subtitle">Flags style and formatting issues using deterministic rules. Toggle on the AI option below for additional structural and tone feedback (uses AI).</div>
   </div>
 
   <div class="controls">
@@ -304,6 +353,42 @@
   <div class="filters" id="filters"></div>
 
   <div class="issues" id="issues"></div>
+
+  <div class="advanced-toggle" onclick="toggleAdvanced()"><span style="font-size:15px">&#9881;</span> Advanced</div>
+  <div class="advanced-panel" id="advancedPanel" style="display:none">
+
+    <div class="adv-section">
+      <div class="adv-label">AI system prompt</div>
+      <div class="adv-hint">The instructions sent to the AI for style checking. Edit to customise; Reset to restore the built-in default.</div>
+      <textarea id="promptTextarea" class="prompt-textarea" rows="14"></textarea>
+      <div class="adv-actions">
+        <button class="btn btn-primary" style="padding:6px 12px;font-size:12px" onclick="savePrompt()">Save</button>
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="resetPrompt()">Reset to default</button>
+      </div>
+      <div class="adv-status" id="promptStatus"></div>
+    </div>
+
+    <div class="adv-section">
+      <div class="adv-label">Debug: editorial style guide (Google Doc)</div>
+      <div class="adv-hint">Reads the Google Doc set in STYLE_GUIDE_URL to verify it's accessible and shows what text the LLM receives.</div>
+      <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="debugStyleGuide()">Fetch style guide</button>
+      <div class="adv-status" id="debugStyleStatus"></div>
+      <pre id="debugStyleText" class="debug-text"></pre>
+    </div>
+
+    <div class="adv-section">
+      <div class="adv-label">Debug: shortcode guide (WordPress)</div>
+      <div class="adv-hint">Reads the Google Doc set in SHORTCODE_GUIDE_URL and shows what text the LLM receives.</div>
+      <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="debugShortcodeGuide()">Fetch shortcode guide</button>
+      <div class="adv-status" id="debugStatus"></div>
+      <pre id="debugText" class="debug-text"></pre>
+    </div>
+
+  </div>
+  <div class="beta-footer">
+    <span class="badge">Beta</span>
+    Send bugs and ideas to Valerie
+  </div>
   </div><!-- /mainUI -->
 
   <script>
@@ -588,6 +673,105 @@
     function escHtml(str) {
       if (!str) return '';
       return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // -----------------------------------------------------------------------
+    // Advanced panel
+    // -----------------------------------------------------------------------
+
+    var advancedOpen = false;
+
+    function toggleAdvanced() {
+      advancedOpen = !advancedOpen;
+      document.getElementById('advancedPanel').style.display = advancedOpen ? '' : 'none';
+      if (advancedOpen) loadPrompt();
+    }
+
+    function loadPrompt() {
+      document.getElementById('promptTextarea').value = 'Loading...';
+      google.script.run
+        .withSuccessHandler(function(text) {
+          document.getElementById('promptTextarea').value = text;
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('promptTextarea').value = '';
+          setAdvStatus('promptStatus', 'Error loading prompt: ' + (err.message || err), '#c5221f');
+        })
+        .getSystemPrompt();
+    }
+
+    function savePrompt() {
+      var text = document.getElementById('promptTextarea').value;
+      setAdvStatus('promptStatus', 'Saving…', '#5f6368');
+      google.script.run
+        .withSuccessHandler(function() { setAdvStatus('promptStatus', 'Saved.', '#137333'); })
+        .withFailureHandler(function(err) { setAdvStatus('promptStatus', 'Error: ' + (err.message || err), '#c5221f'); })
+        .saveSystemPrompt(text);
+    }
+
+    function resetPrompt() {
+      setAdvStatus('promptStatus', 'Resetting…', '#5f6368');
+      google.script.run
+        .withSuccessHandler(function(text) {
+          document.getElementById('promptTextarea').value = text;
+          setAdvStatus('promptStatus', 'Reset to default.', '#137333');
+        })
+        .withFailureHandler(function(err) { setAdvStatus('promptStatus', 'Error: ' + (err.message || err), '#c5221f'); })
+        .resetSystemPrompt();
+    }
+
+    function debugStyleGuide() {
+      setAdvStatus('debugStyleStatus', 'Fetching…', '#5f6368');
+      var textEl = document.getElementById('debugStyleText');
+      textEl.style.display = 'none';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            setAdvStatus('debugStyleStatus', 'Error: ' + result.error, '#c5221f');
+          } else if (!result.text) {
+            setAdvStatus('debugStyleStatus', 'Fetched but returned empty content.', '#e37400');
+          } else {
+            setAdvStatus('debugStyleStatus',
+              (result.cached ? 'From cache — ' : 'Fetched fresh — ') + result.text.length + ' chars',
+              '#137333');
+            textEl.textContent = result.text.length > 3000
+              ? result.text.substring(0, 3000) + '\n\n[truncated — ' + result.text.length + ' chars total]'
+              : result.text;
+            textEl.style.display = 'block';
+          }
+        })
+        .withFailureHandler(function(err) { setAdvStatus('debugStyleStatus', 'Error: ' + (err.message || err), '#c5221f'); })
+        .getStyleGuideDebug();
+    }
+
+    function debugShortcodeGuide() {
+      setAdvStatus('debugStatus', 'Fetching…', '#5f6368');
+      var textEl = document.getElementById('debugText');
+      textEl.style.display = 'none';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            setAdvStatus('debugStatus', 'Error: ' + result.error, '#c5221f');
+          } else if (!result.text) {
+            setAdvStatus('debugStatus', 'Fetched but returned empty content.', '#e37400');
+          } else {
+            setAdvStatus('debugStatus',
+              (result.cached ? 'From cache — ' : 'Fetched fresh — ') + result.text.length + ' chars',
+              '#137333');
+            textEl.textContent = result.text.length > 3000
+              ? result.text.substring(0, 3000) + '\n\n[truncated — ' + result.text.length + ' chars total]'
+              : result.text;
+            textEl.style.display = 'block';
+          }
+        })
+        .withFailureHandler(function(err) { setAdvStatus('debugStatus', 'Error: ' + (err.message || err), '#c5221f'); })
+        .getShortcodeGuideDebug();
+    }
+
+    function setAdvStatus(id, msg, color) {
+      var el = document.getElementById(id);
+      el.textContent = msg;
+      el.style.color = color;
     }
   </script>
 

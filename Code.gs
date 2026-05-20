@@ -1,22 +1,24 @@
 /**
- * Epoch AI — Google Docs add-on
+ * 80,000 Hours — Google Docs add-on
  *
- * Provides editorial style checking and internal link suggestions.
+ * Editorial tools: style checking, internal link suggestions, research helper,
+ * and Substack export.
  */
 
 // ---------------------------------------------------------------------------
 // Menu & sidebars
 // ---------------------------------------------------------------------------
 
-function onOpen() {
+function onOpen(e) {
   DocumentApp.getUi()
-    .createMenu('Epoch AI')
-    .addItem('Check style', 'showStyleSidebar')
-    .addItem('Suggest links', 'showLinksSidebar')
-    .addSeparator()
-    .addItem('Research helper', 'showResearchSidebar')
-    .addItem('Generate alt text', 'showAltTextSidebar')
-    .addItem('Generate metadata', 'showMetadataSidebar')
+    .createAddonMenu()
+    .addItem('📝  Check against style & shortcode guide', 'showStyleSidebar')
+    .addItem('✅  Test and fact-check links', 'showLinkVerificationSidebar')
+    .addItem('🏛️  Archive external links', 'showLinkArchiverSidebar')
+    .addItem('🔗  Suggest internal links', 'showLinksSidebar')
+    .addItem('Ⓦ  Prepare for WordPress', 'showMarkdownSidebar')
+    .addItem('📅  Flag stale claims', 'showRecencyCheckSidebar')
+    .addItem('🗞️  Prepare for Substack', 'showCreateSubstackTabDialog')
     .addToUi();
 }
 
@@ -32,7 +34,7 @@ function authorize() {
 function showStyleSidebar() {
   var html = HtmlService.createTemplateFromFile('Sidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch AI — Style checker');
+  var output = html.evaluate().setTitle('80k Editorial Tools');
   DocumentApp.getUi().showSidebar(output);
 }
 
@@ -43,28 +45,23 @@ function showSidebar() {
 function showLinksSidebar() {
   var html = HtmlService.createTemplateFromFile('LinksSidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch AI — Internal links');
+  var output = html.evaluate().setTitle('80k Editorial Tools');
   DocumentApp.getUi().showSidebar(output);
 }
 
-function showAltTextSidebar() {
-  var html = HtmlService.createTemplateFromFile('AltTextSidebar');
-  html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch AI — Alt text');
-  DocumentApp.getUi().showSidebar(output);
-}
-
-function showResearchSidebar() {
+function showLinkVerificationSidebar() {
   var html = HtmlService.createTemplateFromFile('ResearchSidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch AI — Research helper');
+  html.tool = 'links';
+  var output = html.evaluate().setTitle('80k Editorial Tools');
   DocumentApp.getUi().showSidebar(output);
 }
 
-function showMetadataSidebar() {
-  var html = HtmlService.createTemplateFromFile('MetadataSidebar');
+function showRecencyCheckSidebar() {
+  var html = HtmlService.createTemplateFromFile('ResearchSidebar');
   html.userEmail = Session.getEffectiveUser().getEmail();
-  var output = html.evaluate().setTitle('Epoch AI — Metadata');
+  html.tool = 'recency';
+  var output = html.evaluate().setTitle('80k Editorial Tools');
   DocumentApp.getUi().showSidebar(output);
 }
 
@@ -328,8 +325,13 @@ function suggestLinks() {
 }
 
 /**
- * Wrap a text span in a hyperlink. Uses the stored matchStart/matchEnd so we
- * target the right occurrence even when the excerpt appears multiple times.
+ * Wrap a text span in [text](url) markdown syntax AND apply the actual
+ * hyperlink to the text portion. The doc shows `[anchor](https://…)` with
+ * "anchor" being a real clickable link, so the markdown is preserved if the
+ * doc is later exported as plain text or converted to markdown.
+ *
+ * Uses the stored matchStart/matchEnd so we target the right occurrence even
+ * when the excerpt appears multiple times.
  */
 function applyLink(paragraphIndex, linkText, url, matchStart, matchEnd) {
   var body = DocumentApp.getActiveDocument().getBody();
@@ -340,7 +342,12 @@ function applyLink(paragraphIndex, linkText, url, matchStart, matchEnd) {
   var range = resolveRange_(paragraph, linkText, matchStart, matchEnd);
   if (!range) return false;
 
-  paragraph.editAsText().setLinkUrl(range.start, range.end - 1, url);
+  var text = paragraph.editAsText();
+  // Insert the markdown brackets around the original text.
+  text.insertText(range.start, '[');
+  text.insertText(range.end + 1, '](' + url + ')');
+  // Apply the hyperlink to just the text portion (between the brackets).
+  text.setLinkUrl(range.start + 1, range.end, url);
   return true;
 }
 

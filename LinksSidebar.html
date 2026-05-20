@@ -11,7 +11,13 @@
       color: #202124;
       padding: 16px;
       background: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
+    #mainUI { display: contents; }
+    .beta-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid #dadce0; font-size: 11px; color: #5f6368; text-align: center; line-height: 1.7; }
+    .beta-footer .badge { display: inline-block; background: #fef7e0; color: #b06000; font-weight: 600; font-size: 9px; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; margin-right: 4px; vertical-align: 1px; }
 
     .header { margin-bottom: 16px; }
     .header h2 {
@@ -236,15 +242,15 @@
     <strong>Multi-account conflict detected</strong>
     This add-on can't communicate with Google Docs because you have multiple Google accounts signed in.
     <ol>
-      <li>Open this document in a <b>dedicated Chrome profile</b> that only has your Epoch account signed in</li>
-      <li>Or open it in an <b>incognito window</b> and sign in with your Epoch account only</li>
+      <li>Open this document in a <b>dedicated Chrome profile</b> that only has your 80,000 Hours account signed in</li>
+      <li>Or open it in an <b>incognito window</b> and sign in with your 80,000 Hours account only</li>
     </ol>
   </div>
 
   <div id="mainUI">
   <div class="header">
-    <h2>Internal links</h2>
-    <div class="subtitle">Suggest links to related Epoch publications</div>
+    <h2>Suggest internal links</h2>
+    <div class="subtitle">Uses AI to suggest places where the draft could link to existing 80,000 Hours articles. (Uses AI)</div>
   </div>
 
   <div class="controls">
@@ -258,23 +264,20 @@
 
   <div class="suggestions" id="suggestions"></div>
 
-  <hr class="section-divider">
-
-  <div class="header">
-    <h2>Related articles</h2>
-    <div class="subtitle">Suggest articles for the relatedWork frontmatter</div>
   </div>
 
-  <div class="controls">
-    <button class="btn btn-primary" id="btnRelated" onclick="runRelatedWork()">Suggest articles</button>
-    <button class="btn btn-secondary" id="btnClearRW" onclick="clearRelatedWork()" style="display:none">Clear</button>
+  <div style="margin-top:20px;border-top:1px solid #dadce0;padding-top:12px;font-size:11px;color:#5f6368;cursor:pointer;user-select:none" onclick="toggleCatalogDebug()" id="catalogDebugToggle">&#9881; Debug catalog</div>
+
+  <div id="catalogDebugPanel" style="display:none;margin-top:10px">
+    <div style="font-size:11px;color:#5f6368;margin-bottom:8px">Checks whether the 80k article catalog is loading correctly from the WordPress API. Shows the item count and a sample of entries.</div>
+    <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="testCatalog()">Test catalog fetch</button>
+    <div id="catalogDebugStatus" style="font-size:11px;margin-top:6px;min-height:14px"></div>
+    <pre id="catalogDebugText" style="font-size:10px;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto;background:#f8f9fa;border:1px solid #dadce0;border-radius:4px;padding:8px;margin-top:8px;display:none;line-height:1.4"></pre>
   </div>
 
-  <div class="status" id="rwStatus"></div>
-
-  <div class="summary" id="rwSummary"></div>
-
-  <div class="suggestions" id="relatedWork"></div>
+  <div class="beta-footer">
+    <span class="badge">Beta</span>
+    Send bugs and ideas to Valerie
   </div>
 
   <script>
@@ -450,117 +453,52 @@
       document.getElementById('btnClear').style.display = 'none';
     }
 
-    // ----- Related work -----
+    // -----------------------------------------------------------------------
+    // Catalog debug
+    // -----------------------------------------------------------------------
 
-    var allRelatedWork = [];
+    function toggleCatalogDebug() {
+      var panel = document.getElementById('catalogDebugPanel');
+      panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    }
 
-    function runRelatedWork() {
-      var btn = document.getElementById('btnRelated');
-      btn.disabled = true;
-      btn.textContent = 'Analyzing...';
-      showRWStatus('running', 'Finding related articles...');
-      document.getElementById('relatedWork').innerHTML = '';
-      document.getElementById('rwSummary').className = 'summary';
+    function testCatalog() {
+      var statusEl = document.getElementById('catalogDebugStatus');
+      var textEl = document.getElementById('catalogDebugText');
+      statusEl.textContent = 'Fetching…';
+      statusEl.style.color = '#5f6368';
+      textEl.style.display = 'none';
 
       google.script.run
-        .withSuccessHandler(onRelatedWorkComplete)
-        .withFailureHandler(onRelatedWorkError)
-        .suggestRelatedWork();
-    }
-
-    function onRelatedWorkComplete(suggestions) {
-      var btn = document.getElementById('btnRelated');
-      btn.disabled = false;
-      btn.textContent = 'Re-check';
-      document.getElementById('btnClearRW').style.display = '';
-
-      allRelatedWork = suggestions || [];
-
-      if (allRelatedWork.length === 1 && allRelatedWork[0].error) {
-        showRWStatus('error', allRelatedWork[0].message);
-        return;
-      }
-
-      if (allRelatedWork.length === 0) {
-        showRWStatus('done', 'No related articles found.');
-        document.getElementById('relatedWork').innerHTML =
-          '<div class="empty-state"><div class="icon">&#128218;</div>No related articles to suggest.</div>';
-        return;
-      }
-
-      showRWStatus('done', allRelatedWork.length + ' article' + (allRelatedWork.length === 1 ? '' : 's') + ' suggested');
-      var summaryEl = document.getElementById('rwSummary');
-      summaryEl.innerHTML = '<span class="count">' + allRelatedWork.length + ' suggestion' + (allRelatedWork.length === 1 ? '' : 's') + '</span>';
-      summaryEl.className = 'summary visible';
-
-      renderRelatedWork();
-    }
-
-    function onRelatedWorkError(err) {
-      var btn = document.getElementById('btnRelated');
-      btn.disabled = false;
-      btn.textContent = 'Suggest articles';
-      showRWStatus('error', 'Error: ' + (err.message || err));
-    }
-
-    function showRWStatus(type, msg) {
-      var el = document.getElementById('rwStatus');
-      el.className = 'status visible ' + type;
-      el.textContent = msg;
-    }
-
-    function renderRelatedWork() {
-      var container = document.getElementById('relatedWork');
-      container.innerHTML = '';
-
-      allRelatedWork.forEach(function(item, idx) {
-        var card = document.createElement('div');
-        card.className = 'rw-card';
-        card.id = 'rw-' + idx;
-
-        var html = '';
-        html += '<div class="suggestion-target">';
-        html += '<a href="' + escHtml(item.url) + '" target="_blank">' + escHtml(item.title) + '</a>';
-        html += '</div>';
-        html += '<div class="rw-path">' + escHtml(item.path) + '</div>';
-        html += '<div class="suggestion-reason">' + escHtml(item.reason) + '</div>';
-
-        html += '<div class="suggestion-actions">';
-        html += '<button class="btn-sm btn-apply" onclick="applyRelatedWork(' + idx + ')">Add to frontmatter</button>';
-        html += '<button class="btn-sm btn-dismiss" onclick="dismissRelatedWork(' + idx + ')">Dismiss</button>';
-        html += '</div>';
-
-        card.innerHTML = html;
-        container.appendChild(card);
-      });
-    }
-
-    function applyRelatedWork(idx) {
-      var item = allRelatedWork[idx];
-      if (!item) return;
-
-      google.script.run
-        .withSuccessHandler(function(success) {
-          if (success) {
-            var card = document.getElementById('rw-' + idx);
-            if (card) card.className += ' applied';
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            statusEl.textContent = 'Error: ' + result.error;
+            statusEl.style.color = '#c5221f';
+          } else {
+            statusEl.textContent = (result.cached ? 'From cache — ' : 'Fetched fresh — ') + result.count + ' articles loaded';
+            statusEl.style.color = result.count > 0 ? '#137333' : '#e37400';
+            if (result.perType) {
+              var lines = ['Per post type:', ''];
+              var types = Object.keys(result.perType);
+              for (var i = 0; i < types.length; i++) {
+                var t = types[i];
+                var info = result.perType[t];
+                var head = '  ' + t + ': ' + info.count;
+                lines.push(head);
+                if (info.example) {
+                  lines.push('    e.g. ' + info.example.path + ' — ' + info.example.title);
+                }
+              }
+              textEl.textContent = lines.join('\n');
+              textEl.style.display = 'block';
+            }
           }
         })
-        .applyRelatedWork(item.path);
-    }
-
-    function dismissRelatedWork(idx) {
-      var card = document.getElementById('rw-' + idx);
-      if (card) card.className += ' dismissed';
-    }
-
-    function clearRelatedWork() {
-      allRelatedWork = [];
-      document.getElementById('relatedWork').innerHTML = '';
-      document.getElementById('rwSummary').className = 'summary';
-      document.getElementById('rwStatus').className = 'status';
-      document.getElementById('btnRelated').textContent = 'Suggest articles';
-      document.getElementById('btnClearRW').style.display = 'none';
+        .withFailureHandler(function(err) {
+          statusEl.textContent = 'Error: ' + (err.message || err);
+          statusEl.style.color = '#c5221f';
+        })
+        .getCatalogDebug();
     }
 
     function escHtml(str) {

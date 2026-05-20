@@ -1,5 +1,5 @@
 /**
- * Epoch AI — Research helper
+ * 80,000 Hours — Research helper
  *
  * Two related features:
  *   1. Link verification — for each external hyperlink in the doc, fetch the
@@ -15,10 +15,8 @@
 // Skip these hosts during link verification — they're either internal or
 // don't make sense to verify in this workflow.
 var SKIP_LINK_HOSTS = {
-  'epoch.ai': true,
-  'www.epoch.ai': true,
-  'epochai.org': true,
-  'www.epochai.org': true,
+  '80000hours.org': true,
+  'www.80000hours.org': true,
   'docs.google.com': true,
   'drive.google.com': true,
   'accounts.google.com': true
@@ -52,6 +50,7 @@ function getDocumentExternalLinks() {
   var body = DocumentApp.getActiveDocument().getBody();
   var paragraphs = body.getParagraphs();
   var links = [];
+  var seen = {};
 
   for (var pi = 0; pi < paragraphs.length; pi++) {
     var para = paragraphs[pi];
@@ -59,6 +58,7 @@ function getDocumentExternalLinks() {
     var content = text.getText();
     if (!content) continue;
 
+    // 1. Native Google Docs hyperlinks
     var i = 0;
     while (i < content.length) {
       var url = text.getLinkUrl(i);
@@ -67,20 +67,60 @@ function getDocumentExternalLinks() {
         while (i < content.length && text.getLinkUrl(i) === url) i++;
         var anchor = content.substring(start, i);
         if (shouldVerifyLink_(url)) {
-          links.push({
-            index: links.length,
-            url: url,
-            anchorText: anchor,
-            paragraphIndex: pi,
-            anchorStart: start,
-            anchorEnd: i,
-            paragraphText: content,
-            context: extractContext_(content, start, i)
-          });
+          var key = url + ':' + pi + ':' + start;
+          if (!seen[key]) {
+            seen[key] = true;
+            links.push({
+              index: links.length,
+              url: url,
+              anchorText: anchor,
+              paragraphIndex: pi,
+              anchorStart: start,
+              anchorEnd: i,
+              paragraphText: content,
+              context: extractContext_(content, start, i)
+            });
+          }
         }
       } else {
         i++;
       }
+    }
+
+    // 2. Markdown-format links: [anchor](url) — catches links written as
+    //    plain markdown text, including those produced by the link
+    //    suggester's "Apply" action. Dedupe against native hyperlinks
+    //    above so we don't verify the same URL twice.
+    var mdRegex = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g;
+    var match;
+    while ((match = mdRegex.exec(content)) !== null) {
+      var mdUrl = match[2];
+      var mdAnchor = match[1];
+      var mdStart = match.index;
+      var mdEnd = mdStart + match[0].length;
+      if (!shouldVerifyLink_(mdUrl)) continue;
+
+      // Skip if anything inside this span is already a native hyperlink to
+      // the same URL — the applyLink helper produces this exact pattern.
+      var alreadyLinked = false;
+      for (var p = mdStart; p < mdEnd && p < content.length; p++) {
+        if (text.getLinkUrl(p) === mdUrl) { alreadyLinked = true; break; }
+      }
+      if (alreadyLinked) continue;
+
+      var mdKey = mdUrl + ':' + pi + ':' + mdStart;
+      if (seen[mdKey]) continue;
+      seen[mdKey] = true;
+      links.push({
+        index: links.length,
+        url: mdUrl,
+        anchorText: mdAnchor,
+        paragraphIndex: pi,
+        anchorStart: mdStart,
+        anchorEnd: mdEnd,
+        paragraphText: content,
+        context: extractContext_(content, mdStart, mdEnd)
+      });
     }
   }
 

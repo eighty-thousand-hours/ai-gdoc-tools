@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      font-size: 13px;
+      color: #202124;
+      padding: 16px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    .header { margin-bottom: 16px; }
+    .header h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+    .header .subtitle { font-size: 12px; color: #5f6368; line-height: 1.4; }
+
+    .controls { display: flex; gap: 8px; margin-bottom: 12px; }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary { background: #1a73e8; color: #fff; }
+    .btn-primary:hover { background: #1557b0; }
+    .btn-primary:disabled { background: #dadce0; color: #80868b; cursor: default; }
+    .btn-secondary { background: #fff; color: #1a73e8; border: 1px solid #dadce0; }
+    .btn-secondary:hover { background: #f1f3f4; }
+    .btn-secondary:disabled { background: #f8f9fa; color: #80868b; cursor: default; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 12px;
+      display: none;
+      line-height: 1.5;
+    }
+    .status.visible { display: block; }
+    .status.running { background: #e8f0fe; color: #1967d2; }
+    .status.done { background: #e6f4ea; color: #137333; }
+    .status.error { background: #fce8e6; color: #c5221f; }
+
+    .summary {
+      font-size: 12px;
+      color: #202124;
+      padding: 4px 0;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .summary.visible { display: block; }
+
+    details.section {
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      background: #f8f9fa;
+    }
+    details.section summary {
+      cursor: pointer;
+      padding: 8px 12px;
+      font-size: 12px;
+      list-style: none;
+      user-select: none;
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    details.section summary::-webkit-details-marker { display: none; }
+    details.section summary::before {
+      content: '▸';
+      font-size: 10px;
+      color: #5f6368;
+      transition: transform 0.15s;
+      display: inline-block;
+    }
+    details.section[open] > summary::before { transform: rotate(90deg); }
+    details.section summary b { color: #202124; font-weight: 600; }
+    details.section .body {
+      padding: 4px 12px 10px 28px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    details.section.warn { background: #fef7e0; border-color: #f9ab00; }
+    details.section.empty summary { color: #5f6368; cursor: default; }
+    details.section.empty summary::before { content: '·'; }
+
+    .item-list { list-style: none; padding: 0; margin: 0; }
+    .item-list li {
+      padding: 6px 0;
+      border-bottom: 1px solid #e8eaed;
+      word-break: break-all;
+    }
+    .item-list li:last-child { border-bottom: none; }
+    .item-list .anchor {
+      color: #202124;
+      font-weight: 500;
+      margin-bottom: 2px;
+      word-break: break-word;
+    }
+    .item-list .from { color: #5f6368; }
+    .item-list .to { color: #137333; }
+    .item-list .arrow { color: #5f6368; margin: 0 4px; }
+    .item-list a { color: #1a73e8; text-decoration: none; }
+    .item-list a:hover { text-decoration: underline; }
+    .item-list .badge-saved {
+      display: inline-block;
+      background: #e6f4ea;
+      color: #137333;
+      font-weight: 600;
+      font-size: 9px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-left: 4px;
+      vertical-align: 1px;
+    }
+    .item-list .save-link { display: inline-block; margin-top: 2px; }
+
+    .note {
+      font-size: 11px;
+      color: #5f6368;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-left: 3px solid #f9ab00;
+      border-radius: 4px;
+      line-height: 1.5;
+    }
+    .note b { color: #202124; }
+
+    .debug-toggle {
+      margin-top: 20px;
+      border-top: 1px solid #dadce0;
+      padding-top: 12px;
+      font-size: 11px;
+      color: #5f6368;
+      cursor: pointer;
+      user-select: none;
+    }
+    .debug-panel { display: none; margin-top: 10px; }
+    .debug-panel .desc { font-size: 11px; color: #5f6368; margin-bottom: 8px; line-height: 1.5; }
+    .debug-panel .debug-status { font-size: 11px; margin-top: 6px; min-height: 14px; }
+
+    .beta-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid #dadce0; font-size: 11px; color: #5f6368; text-align: center; line-height: 1.7; }
+    .beta-footer .badge { display: inline-block; background: #fef7e0; color: #b06000; font-weight: 600; font-size: 9px; letter-spacing: 0.6px; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; margin-right: 4px; vertical-align: 1px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h2>Archive external links</h2>
+    <div class="subtitle">Replaces every external link in the doc with its latest Wayback Machine snapshot. If no snapshot exists, automatically saves one first. 80,000 Hours links are left unchanged.</div>
+  </div>
+
+  <div class="note">
+    <b>Heads up:</b> this modifies your doc. Run it once you're done editing — it's not easy to undo individual link rewrites in bulk. (Use the debug panel below to bulk un-archive if needed.)
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnArchive" onclick="runArchive()">Archive external links</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="summary" id="summary"></div>
+
+  <div class="debug-toggle" onclick="toggleDebug()" id="debugToggle">&#9881; Debug</div>
+  <div class="debug-panel" id="debugPanel">
+    <div class="desc">Reverses the archive operation: finds every web.archive.org link in the doc and rewrites it back to its original URL.</div>
+    <button class="btn btn-secondary" id="btnUnarchive" onclick="runUnarchive()">Un-archive links</button>
+    <div class="debug-status" id="debugStatus"></div>
+    <div class="summary" id="debugSummary"></div>
+  </div>
+
+  <div class="beta-footer">
+    <span class="badge">Beta</span>
+    Send bugs and ideas to Valerie
+  </div>
+
+  <script>
+    function runArchive() {
+      var btn = document.getElementById('btnArchive');
+      btn.disabled = true;
+      btn.textContent = 'Archiving…';
+      showStatus('running', 'Looking up Wayback snapshots — and saving fresh ones for any URL not yet archived. This can take a few minutes on large docs.');
+      hide('summary');
+
+      google.script.run
+        .withSuccessHandler(onArchiveComplete)
+        .withFailureHandler(onError)
+        .transformLinksToArchive();
+    }
+
+    function onArchiveComplete(result) {
+      var btn = document.getElementById('btnArchive');
+      btn.disabled = false;
+      btn.textContent = 'Archive again';
+
+      var replacements = result.replacements || [];
+      var keptInternal = result.keptInternal || [];
+      var keptArchived = result.keptArchived || [];
+      var unavailable = result.unavailable || [];
+
+      var savedNowCount = 0;
+      for (var i = 0; i < replacements.length; i++) {
+        if (replacements[i].savedNow) savedNowCount++;
+      }
+
+      var doneMsg = replacements.length + ' link' + plural(replacements.length) + ' archived';
+      if (savedNowCount) doneMsg += ' (' + savedNowCount + ' freshly saved to Wayback)';
+      showStatus('done', doneMsg);
+
+      var html = '';
+      html += renderSection({
+        count: replacements.length,
+        label: 'external link' + plural(replacements.length) + ' replaced with Wayback snapshot',
+        items: replacements,
+        renderItem: renderReplacement,
+        empty: replacements.length === 0
+      });
+      html += renderSection({
+        count: keptInternal.length,
+        label: 'kept (80,000 Hours internal links)',
+        items: keptInternal,
+        renderItem: renderKept,
+        empty: keptInternal.length === 0
+      });
+      html += renderSection({
+        count: keptArchived.length,
+        label: 'kept (already on web.archive.org)',
+        items: keptArchived,
+        renderItem: renderKept,
+        empty: keptArchived.length === 0
+      });
+      html += renderSection({
+        count: unavailable.length,
+        label: 'couldn\'t be archived (Wayback couldn\'t save it)',
+        items: unavailable,
+        renderItem: renderUnavailable,
+        empty: unavailable.length === 0,
+        warn: unavailable.length > 0
+      });
+
+      var sumEl = document.getElementById('summary');
+      sumEl.innerHTML = html;
+      sumEl.className = 'summary visible';
+    }
+
+    function runUnarchive() {
+      var btn = document.getElementById('btnUnarchive');
+      btn.disabled = true;
+      btn.textContent = 'Un-archiving…';
+      var statusEl = document.getElementById('debugStatus');
+      statusEl.textContent = 'Walking the doc and reverting web.archive.org links…';
+      statusEl.style.color = '#1967d2';
+      hide('debugSummary');
+
+      google.script.run
+        .withSuccessHandler(onUnarchiveComplete)
+        .withFailureHandler(onUnarchiveError)
+        .unarchiveLinks();
+    }
+
+    function onUnarchiveComplete(result) {
+      var btn = document.getElementById('btnUnarchive');
+      btn.disabled = false;
+      btn.textContent = 'Un-archive links';
+
+      var restored = result.restored || [];
+      var statusEl = document.getElementById('debugStatus');
+      statusEl.textContent = restored.length + ' link' + plural(restored.length) + ' reverted to original URL' + plural(restored.length);
+      statusEl.style.color = '#137333';
+
+      var html = renderSection({
+        count: restored.length,
+        label: 'archive link' + plural(restored.length) + ' reverted',
+        items: restored,
+        renderItem: renderRestored,
+        empty: restored.length === 0
+      });
+      var sumEl = document.getElementById('debugSummary');
+      sumEl.innerHTML = html;
+      sumEl.className = 'summary visible';
+    }
+
+    function onUnarchiveError(err) {
+      var btn = document.getElementById('btnUnarchive');
+      btn.disabled = false;
+      btn.textContent = 'Un-archive links';
+      var statusEl = document.getElementById('debugStatus');
+      statusEl.textContent = 'Error: ' + (err.message || err);
+      statusEl.style.color = '#c5221f';
+    }
+
+    function onError(err) {
+      var btn = document.getElementById('btnArchive');
+      btn.disabled = false;
+      btn.textContent = 'Archive external links';
+      showStatus('error', 'Error: ' + (err.message || err));
+    }
+
+    function renderSection(opts) {
+      var classes = 'section';
+      if (opts.warn) classes += ' warn';
+      if (opts.empty) classes += ' empty';
+
+      var summary = '<summary><b>' + opts.count + '</b> ' + escHtml(opts.label) + '</summary>';
+      if (opts.empty) {
+        return '<details class="' + classes + '">' + summary + '</details>';
+      }
+
+      var body = '<div class="body"><ul class="item-list">';
+      for (var i = 0; i < opts.items.length; i++) body += opts.renderItem(opts.items[i]);
+      body += '</ul></div>';
+
+      return '<details class="' + classes + '">' + summary + body + '</details>';
+    }
+
+    function renderReplacement(item) {
+      var anchor = item.anchor ? '<div class="anchor">' + escHtml(truncate(item.anchor, 120)) + '</div>' : '';
+      var savedBadge = item.savedNow ? '<span class="badge-saved">Saved just now</span>' : '';
+      return '<li>' +
+        anchor +
+        '<div><span class="from"><a href="' + escAttr(item.originalUrl) + '" target="_blank">' + escHtml(item.originalUrl) + '</a></span></div>' +
+        '<div><span class="arrow">→</span><span class="to"><a href="' + escAttr(item.snapshotUrl) + '" target="_blank">' + escHtml(item.snapshotUrl) + '</a></span>' + savedBadge + '</div>' +
+        '</li>';
+    }
+
+    function renderKept(item) {
+      var anchor = item.anchor ? '<div class="anchor">' + escHtml(truncate(item.anchor, 120)) + '</div>' : '';
+      return '<li>' +
+        anchor +
+        '<div><a href="' + escAttr(item.url) + '" target="_blank">' + escHtml(item.url) + '</a></div>' +
+        '</li>';
+    }
+
+    function renderUnavailable(item) {
+      var anchor = item.anchor ? '<div class="anchor">' + escHtml(truncate(item.anchor, 120)) + '</div>' : '';
+      var saveUrl = 'https://web.archive.org/save/' + item.url;
+      return '<li>' +
+        anchor +
+        '<div><a href="' + escAttr(item.url) + '" target="_blank">' + escHtml(item.url) + '</a></div>' +
+        '<a class="save-link" href="' + escAttr(saveUrl) + '" target="_blank">→ Try saving manually</a>' +
+        '</li>';
+    }
+
+    function renderRestored(item) {
+      var anchor = item.anchor ? '<div class="anchor">' + escHtml(truncate(item.anchor, 120)) + '</div>' : '';
+      return '<li>' +
+        anchor +
+        '<div><span class="from"><a href="' + escAttr(item.archiveUrl) + '" target="_blank">' + escHtml(item.archiveUrl) + '</a></span></div>' +
+        '<div><span class="arrow">→</span><span class="to"><a href="' + escAttr(item.originalUrl) + '" target="_blank">' + escHtml(item.originalUrl) + '</a></span></div>' +
+        '</li>';
+    }
+
+    function plural(n) { return n === 1 ? '' : 's'; }
+    function truncate(s, n) { s = String(s); return s.length > n ? s.substring(0, n) + '…' : s; }
+
+    function showStatus(type, msg) {
+      var el = document.getElementById('status');
+      el.className = 'status visible ' + type;
+      el.textContent = msg;
+    }
+    function hide(id) {
+      var el = document.getElementById(id);
+      el.className = el.className.replace(/\bvisible\b/g, '').trim();
+    }
+
+    function toggleDebug() {
+      var panel = document.getElementById('debugPanel');
+      panel.style.display = panel.style.display === 'none' || !panel.style.display ? 'block' : 'none';
+    }
+
+    function escHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function escAttr(s) { return escHtml(s); }
+  </script>
+</body>
+</html>

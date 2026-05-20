@@ -20,7 +20,7 @@ function getCatalog() {
 function fetchCatalog_() {
   var base = (PropertiesService.getScriptProperties().getProperty('CATALOG_BASE_URL') || 'https://80000hours.org').replace(/\/$/, '');
   var items = [];
-  var fields = '_fields=title,link';
+  var fields = '_fields=title,link,content.protected';
   // Post types found via 80000hours.org/sitemap_index.xml. The REST endpoint
   // slug usually matches the post type name; Yoast pluralises built-ins
   // (pages/posts) but custom post types stay singular.
@@ -59,7 +59,8 @@ function fetchCatalog_() {
           var link = (data[i].link || '').replace(/\/$/, '');
           var path = link.replace(base, '') || '/';
           var title = data[i].title && data[i].title.rendered ? data[i].title.rendered : '';
-          if (path && title) {
+          var isProtected = data[i].content && data[i].content.protected;
+          if (path && title && !isProtected) {
             items.push({ path: path, title: title });
             typeCount++;
             if (!typeExample) typeExample = { path: path, title: title };

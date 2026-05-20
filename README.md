@@ -1,6 +1,6 @@
 # 80,000 Hours Google Docs add-on
 
-Google Docs add-on for 80,000 Hours editorial work. Provides style checking, link tools, research helpers, and export utilities via sidebar UIs.
+Google Docs add-on for 80,000 Hours editorial work. Provides style checking, link tools, fact-checking, and export utilities via sidebar UIs.
 
 ## What it does
 
@@ -22,13 +22,13 @@ Seven tools, all accessible from the **80k Editorial Tools** menu in any Google 
 | `StyleRules.gs` | Deterministic rule engine (~65 glossary, ~24 formatting, ~8 math rules) |
 | `ClaudeAPI.gs` | LLM integration (Anthropic): style check, link suggestions, related work, link verification, recency check |
 | `Catalog.gs` | 80k site catalog (auto-generated from `full-catalog.json` in internal-linking-automation) |
-| `ResearchHelper.gs` | External-link enumeration, URL fetching + HTML stripping, recency-check driver |
+| `ResearchHelper.gs` | External-link enumeration, URL fetching + HTML stripping, recency-check driver (backs "Test and fact-check links" and "Flag stale claims") |
 | `LinkArchiver.gs` | Wayback Machine lookup, Save Page Now triggering, and un-archive logic |
 | `MarkdownExport.gs` | Doc-to-Markdown conversion, WordPress image upload, new-tab creation |
 | `SubstackTab.gs` | Substack-copyable tab creation, footnote-to-marker conversion, metadata block |
 | `Sidebar.html` | Style checker sidebar UI |
 | `LinksSidebar.html` | Internal links + related articles sidebar UI |
-| `ResearchSidebar.html` | Research helper sidebar UI (link verification + recency check tabs) |
+| `ResearchSidebar.html` | Sidebar UI for "Test and fact-check links" and "Flag stale claims" (two tabs) |
 | `LinkArchiverSidebar.html` | Archive external links sidebar UI |
 | `MarkdownSidebar.html` | WordPress export sidebar UI |
 | `appsscript.json` | Apps Script manifest and OAuth scopes |
@@ -84,7 +84,6 @@ The WordPress tool has a **Debug WordPress connection** panel in the sidebar tha
 Two Google Docs are maintained for manual regression testing:
 
 - **Kitchen sink** — [doc `1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk`](https://docs.google.com/document/d/1xcx-NLYEQm7kizBIkeQsdO8QGF59rDD3BzhsI8PtwUk/edit). Exhaustive per-rule test cases for the Style checker. **Whenever a new rule is added to `StyleRules.gs`, add a matching test case here.** Also the Google Doc that hosts the container-bound dev script, so `clasp push` against `.clasp.json.container-bound` updates this doc directly.
-- **Sample doc** — [doc `1YyIzaG3r6hdiA4LL3p9ENb5KsBiB2zusKNVcjT7w7AI`](https://docs.google.com/document/d/1YyIzaG3r6hdiA4LL3p9ENb5KsBiB2zusKNVcjT7w7AI/edit). Realistic doc with images, external hyperlinks, footnotes, and tables — used for end-to-end testing of Research helper, Archive links, Prepare for WordPress (image upload + markdown conversion), Prepare for Substack (footnote markers + metadata block), and the table/link-preserving logic.
 
 ## Known limitations
 

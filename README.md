@@ -53,7 +53,7 @@ After pushing, create a version and update the Marketplace deployment:
 
 ```bash
 clasp version "description"
-clasp deploy -i AKfycbx-qsmqSGDrqcZqMjGcjk-cmx-t_aIaABGPmoczNJb9Nf4wOwhQzEf02b2SdtIz65mF -V <new-version-number>
+clasp deploy -i YOUR_APPS_SCRIPT_DEPLOYMENT_ID -V <new-version-number>
 ```
 
 **Important**: also update the version number in the GCP Marketplace SDK App Configuration (`Docs add-on script version` field), then publish from the Store Listing tab.

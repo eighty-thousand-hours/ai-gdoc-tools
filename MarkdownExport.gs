@@ -32,7 +32,7 @@ function showMarkdownSidebar() {
 
 function convertDocToMarkdown() {
   var body = DocumentApp.getActiveDocument().getBody();
-  var fnState = { nextNumber: 1, definitions: [], warnings: [] };
+  var fnState = { nextNumber: 1, definitions: [], warnings: [], imageCount: 0 };
   var pieces = [];
   var n = body.getNumChildren();
   var prevType = null;
@@ -117,7 +117,7 @@ function fillCreatedMarkdownTab(context) {
   var targetBody = targetTab.getBody();
 
   clearBody_(targetBody);
-  var fnState = { nextNumber: 1, definitions: [], warnings: [] };
+  var fnState = { nextNumber: 1, definitions: [], warnings: [], imageCount: 0 };
   copyBodyAsMarkdown_(sourceBody, targetBody, fnState);
   removeLeadingEmptyParagraph_(targetBody);
   appendFootnoteDefinitions_(targetBody, fnState);
@@ -252,7 +252,7 @@ function elementChildrenToMarkdown_(element, fnState) {
     } else if (type === DocumentApp.ElementType.FOOTNOTE) {
       pieces.push(footnoteToMarker_(child.asFootnote(), fnState));
     } else if (type === DocumentApp.ElementType.INLINE_IMAGE) {
-      pieces.push(inlineImageToMarkdown_(child.asInlineImage()));
+      pieces.push(inlineImageToMarkdown_(child.asInlineImage(), fnState));
     }
     // EQUATION, INLINE_DRAWING, PAGE_BREAK — skipped for MVP
   }
@@ -276,6 +276,7 @@ function inlineImageToMarkdown_(image, state) {
 
   // Flag oversized images so the user can swap them out before publishing.
   if (state && state.warnings) {
+    state.imageCount = (state.imageCount || 0) + 1;
     var notes = [];
     if (bytes.length > IMAGE_SIZE_WARN_BYTES) {
       notes.push((bytes.length / (1024 * 1024)).toFixed(1) + ' MB');
@@ -285,7 +286,9 @@ function inlineImageToMarkdown_(image, state) {
       notes.push(dims.width + '×' + dims.height + ' px');
     }
     if (notes.length > 0) {
-      state.warnings.push('Large image: ' + notes.join(', ') + (alt ? ' (alt: ' + alt + ')' : ''));
+      var label = 'Image ' + state.imageCount + ': ' + notes.join(', ');
+      if (alt) label += ' (alt: "' + alt + '")';
+      state.warnings.push(label);
     }
   }
 
@@ -746,7 +749,10 @@ function imageParagraphWithCaptionToFigure_(imgPara, capPara, state) {
   var blob = image.getBlob();
   var bytes = blob.getBytes();
 
+  var caption = capPara.getText().trim();
+
   if (state && state.warnings) {
+    state.imageCount = (state.imageCount || 0) + 1;
     var notes = [];
     if (bytes.length > IMAGE_SIZE_WARN_BYTES) notes.push((bytes.length / (1024 * 1024)).toFixed(1) + ' MB');
     var dims = getImageDimensions_(bytes);
@@ -754,14 +760,15 @@ function imageParagraphWithCaptionToFigure_(imgPara, capPara, state) {
       notes.push(dims.width + '×' + dims.height + ' px');
     }
     if (notes.length > 0) {
-      state.warnings.push('Large image: ' + notes.join(', ') + (alt ? ' (alt: ' + alt + ')' : ''));
+      var label = 'Image ' + state.imageCount + ': ' + notes.join(', ');
+      if (caption) label += ' — caption: "' + caption.substring(0, 80) + (caption.length > 80 ? '…' : '') + '"';
+      else if (alt) label += ' (alt: "' + alt + '")';
+      state.warnings.push(label);
     }
   }
 
   var result;
   try { result = uploadImageToWordPress_(blob); } catch (e) { result = { url: '', error: e.message }; }
-
-  var caption = capPara.getText().trim();
 
   if (result && result.url) {
     return [

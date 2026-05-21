@@ -361,8 +361,34 @@ function convertFootnoteToMarker_(footnote, state) {
 
 function extractFootnoteText_(footnote) {
   try {
-    const text = footnote.getFootnoteContents().getText().trim();
-    return text || '[Empty footnote]';
+    const contents = footnote.getFootnoteContents();
+    const paragraphs = [];
+    for (var pi = 0; pi < contents.getNumChildren(); pi++) {
+      var child = contents.getChild(pi);
+      if (child.getType() !== DocumentApp.ElementType.PARAGRAPH) continue;
+      var para = child.asParagraph();
+      var textEl = para.editAsText();
+      var raw = textEl.getText();
+      if (!raw) continue;
+      var indices = textEl.getTextAttributeIndices();
+      if (!indices || indices.length === 0) { paragraphs.push(raw); continue; }
+      indices.push(raw.length);
+      var pieces = [];
+      for (var i = 0; i < indices.length - 1; i++) {
+        var start = indices[i];
+        var end = indices[i + 1];
+        if (end <= start) continue;
+        var chunk = raw.substring(start, end);
+        var url = textEl.getLinkUrl(start);
+        if (url) {
+          pieces.push('[' + chunk + '](' + url + ')');
+        } else {
+          pieces.push(chunk);
+        }
+      }
+      paragraphs.push(pieces.join(''));
+    }
+    return paragraphs.join('\n\n').trim() || '[Empty footnote]';
   } catch (error) {
     return '[Could not extract footnote text: ' + error.message + ']';
   }

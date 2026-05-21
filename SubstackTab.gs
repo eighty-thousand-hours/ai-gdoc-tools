@@ -425,8 +425,16 @@ function appendMetadataBlock_(body, state) {
     stats: state.stats
   };
 
+  // Escape curly/smart quotes as \u sequences so the Chrome extension's
+  // smart-quote normalization doesn't corrupt string values in the JSON.
+  var jsonStr = JSON.stringify(metadata, null, 2)
+    .replace(/“/g, '\\u201c')
+    .replace(/”/g, '\\u201d')
+    .replace(/‘/g, '\\u2018')
+    .replace(/’/g, '\\u2019');
+
   body.appendParagraph(SUBSTACK_EXPORT_START);
-  body.appendParagraph(JSON.stringify(metadata, null, 2));
+  body.appendParagraph(jsonStr);
   body.appendParagraph(SUBSTACK_EXPORT_END);
 
   if (state.warnings.length) {

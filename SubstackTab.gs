@@ -381,9 +381,9 @@ function extractFootnoteText_(footnote) {
         var chunk = raw.substring(start, end);
         var url = textEl.getLinkUrl(start);
         if (url) {
-          pieces.push('[' + chunk + '](' + url + ')');
+          pieces.push('<a href="' + escapeAttr_(url) + '">' + escapeHtml_(chunk) + '</a>');
         } else {
-          pieces.push(chunk);
+          pieces.push(escapeHtml_(chunk));
         }
       }
       paragraphs.push(pieces.join(''));
@@ -431,6 +431,14 @@ function getHeadingRank_(heading) {
   if (heading === DocumentApp.ParagraphHeading.HEADING5) return 5;
   if (heading === DocumentApp.ParagraphHeading.HEADING6) return 6;
   return null;
+}
+
+function escapeHtml_(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeAttr_(s) {
+  return escapeHtml_(s).replace(/"/g, '&quot;');
 }
 
 // ---------------------------------------------------------------------------

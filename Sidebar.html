@@ -112,6 +112,14 @@
     .style-variant .sv-option input[type="radio"] {
       margin-top: 2px;
     }
+    .style-variant .sv-link {
+      color: #1a73e8;
+      text-decoration: none;
+      font-size: 11px;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .style-variant .sv-link:hover { text-decoration: underline; }
     .style-variant .sv-note {
       font-size: 11px;
       color: #5f6368;
@@ -404,11 +412,11 @@
     <div class="sv-label">Style guide</div>
     <label class="sv-option">
       <input type="radio" name="styleVariant" value="website" checked onchange="checkStyleGuideConfig()">
-      <span>Use the 80000hours.org style guide (UK English; formal)</span>
+      <span>Use the 80000hours.org style guide (UK English; formal)<a class="sv-link" id="svLinkWebsite" target="_blank" rel="noopener" style="display:none">view&nbsp;&#8599;</a></span>
     </label>
     <label class="sv-option">
       <input type="radio" name="styleVariant" value="substack" onchange="checkStyleGuideConfig()">
-      <span>Use the Substack style guide (American English)</span>
+      <span>Use the Substack style guide (American English)<a class="sv-link" id="svLinkSubstack" target="_blank" rel="noopener" style="display:none">view&nbsp;&#8599;</a></span>
     </label>
     <div class="sv-note">If the post is going to both, the 80000hours.org guide is more rigorous and should take precedence.</div>
   </div>
@@ -464,7 +472,7 @@
     // Proactive multi-account detection
     (function() {
       google.script.run
-        .withSuccessHandler(function() { checkStyleGuideConfig(); })
+        .withSuccessHandler(function() { checkStyleGuideConfig(); loadStyleGuideLinks(); })
         .withFailureHandler(function(err) {
           if (err.message && err.message.indexOf('PERMISSION_DENIED') !== -1) {
             document.getElementById('mainUI').style.display = 'none';
@@ -489,6 +497,28 @@
         .withSuccessHandler(showStyleGuideWarning)
         .withFailureHandler(function() {})
         .getStyleGuideConfigStatus(getStyleVariant());
+    }
+
+    function loadStyleGuideLinks() {
+      google.script.run
+        .withSuccessHandler(function(links) {
+          setSvLink('svLinkWebsite', links && links.website);
+          setSvLink('svLinkSubstack', links && links.substack);
+        })
+        .withFailureHandler(function() {})
+        .getStyleGuideLinks();
+    }
+
+    function setSvLink(id, url) {
+      var a = document.getElementById(id);
+      if (!a) return;
+      if (url) {
+        a.href = url;
+        a.style.display = '';
+      } else {
+        a.removeAttribute('href');
+        a.style.display = 'none';
+      }
     }
 
     function showStyleGuideWarning(status) {

@@ -50,6 +50,18 @@ function getStyleGuideConfigStatus(variant) {
 }
 
 /**
+ * The configured style-guide URL for each variant, so the sidebar can link the
+ * radio options straight to the guide the user will be applying. Empty string
+ * if a variant's Script Property isn't set.
+ */
+function getStyleGuideLinks() {
+  return {
+    website: styleGuideUrlForVariant_('website'),
+    substack: styleGuideUrlForVariant_('substack')
+  };
+}
+
+/**
  * Read the plain text of a Google Doc, or of a specific tab when the URL
  * carries a `tab=t.xxxx` fragment (the two style guides are tabs of one doc).
  * Falls back to the document body if the tab can't be resolved.

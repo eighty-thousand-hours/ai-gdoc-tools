@@ -37,6 +37,25 @@ var UNVERIFIABLE_HTTP_STATUSES = {
   451: true
 };
 
+// A realistic desktop-browser User-Agent. Many sites return 403 to anything
+// that looks like a bot/script; sending a normal browser UA clears a chunk of
+// those. (It won't get past genuine anti-bot or paywall systems — those are
+// reported as "unverifiable" so the editor can check by hand.)
+var FETCH_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Hosts we know block automated fetches outright (login-walled, JS-only, or
+// aggressive anti-bot). Don't bother fetching — tell the editor to check the
+// link by hand instead of surfacing a confusing 403.
+var BLOCKED_FETCH_HOSTS = {
+  'x.com': 'X (Twitter)',
+  'www.x.com': 'X (Twitter)',
+  'twitter.com': 'X (Twitter)',
+  'www.twitter.com': 'X (Twitter)',
+  'mobile.twitter.com': 'X (Twitter)'
+};
+
 // ---------------------------------------------------------------------------
 // Link enumeration
 // ---------------------------------------------------------------------------
@@ -240,21 +259,38 @@ function navigateToLink(paragraphIndex, anchorStart, anchorEnd, anchorText) {
 // ---------------------------------------------------------------------------
 
 function fetchUrlText_(url) {
+  // Sites that block automated access entirely (X/Twitter, etc.) — skip the
+  // fetch and tell the editor to verify manually.
+  var hostMatch = url.match(/^https?:\/\/([^\/]+)/i);
+  var host = hostMatch ? hostMatch[1].toLowerCase() : '';
+  if (BLOCKED_FETCH_HOSTS[host]) {
+    return {
+      error: BLOCKED_FETCH_HOSTS[host] + ' blocks automated link checks — open the link to verify it manually',
+      statusCode: null,
+      unverifiable: true
+    };
+  }
+
   try {
     var response = UrlFetchApp.fetch(url, {
       muteHttpExceptions: true,
       followRedirects: true,
       validateHttpsCertificates: true,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; EpochAI-Addon/1.0; +https://epoch.ai)'
+        'User-Agent': FETCH_USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
       }
     });
     var status = response.getResponseCode();
     if (status >= 400) {
+      var unverifiable = !!UNVERIFIABLE_HTTP_STATUSES[status];
       return {
-        error: 'HTTP ' + status,
+        error: unverifiable
+          ? ('Blocked or paywalled (HTTP ' + status + ') — open the link to verify it manually')
+          : ('HTTP ' + status),
         statusCode: status,
-        unverifiable: !!UNVERIFIABLE_HTTP_STATUSES[status]
+        unverifiable: unverifiable
       };
     }
 

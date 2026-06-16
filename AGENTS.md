@@ -1,23 +1,34 @@
-# Working in this repo (notes for AI assistants)
+# Notes for AI assistants
 
-This is a Google Docs add-on for 80,000 Hours, deployed via `clasp` and published
-to the org through the **Google Workspace Marketplace SDK**.
+Self-contained guidance for non-Claude-Code tools (Claude Code reads `CLAUDE.md`,
+which mirrors this). See `README.md` for full setup and commands.
 
-## ⚠️ Deploying / publishing — read before you deploy
+## Deploying / publishing — read before you deploy
 
 `clasp push`, `clasp create-version`, and `clasp update-deployment` update the
 **script only**. They do **NOT** roll the update out to the org's editors.
 
 **Whenever the user asks you to deploy or publish — or you run any `clasp`
-deploy/version/redeploy command — you MUST remind them of the manual publish
-steps** (and offer the links), because the rollout is incomplete without them:
+deploy/version/redeploy command — you MUST remind them** to finish the rollout:
 
-1. **Bump the version** in the GCP Marketplace SDK **App Configuration**
-   (`Docs add-on script version` field).
-2. **Re-publish** from the **Store Listing** tab.
+1. Bump the version in the GCP Marketplace SDK **App Configuration**
+   (`Docs add-on script version`).
+2. Re-publish from the **Store Listing** tab.
 
-The exact commands and the direct GCP console links are in
-[`README.md`](README.md) → "Publishing an update to the whole org".
+Commands and the direct console links are in `README.md` → "Publishing an update
+to the whole org". Until both steps are done, org users keep the old version.
 
-Until steps 1–2 are done, org users keep running the previously published
-version, even though `clasp` reported success.
+## Project shape
+
+- Google Apps Script add-on for Google Docs — **no npm/build step**. Server code
+  is `.gs`, sidebar UIs are `.html`. Deployed with `clasp`.
+- All tools read/write the **active document tab** via `getActiveBody_()`. Don't
+  reintroduce `DocumentApp.getActiveDocument().getBody()` for document content.
+- Config (style-guide URLs, LLM key, WordPress creds) lives in **Script
+  Properties**, never in code.
+
+## Copy-writing style
+
+- 80,000 Hours uses **British English** in user-facing copy (and the website
+  style guide); the **Substack** variant uses **American English**.
+- Code identifiers and comments are written in American English.

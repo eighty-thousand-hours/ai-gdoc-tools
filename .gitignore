@@ -3,3 +3,6 @@
 !.claude/settings.json
 !.claude/hooks/
 !.claude/hooks/**
+
+# Personal, per-developer Claude prefs (referenced by CLAUDE.md, not shared)
+claude-local-preferences.md

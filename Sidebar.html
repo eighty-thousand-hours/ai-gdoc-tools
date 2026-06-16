@@ -708,12 +708,13 @@
     }
 
     function dismissIssue(idx) {
+      // Just hide the card. We no longer paint a background highlight on the
+      // document (navigation relies on the selection), so there's nothing to
+      // clear — and calling removeHighlight here would wipe any real
+      // highlighting the writer added themselves.
       var card = document.getElementById('issue-' + idx);
       if (card) card.className += ' dismissed';
-      var issue = allIssues[idx];
-      if (issue && issue.original) {
-        google.script.run.removeHighlight(issue.paragraphIndex, issue.original, issue.matchStart, issue.matchEnd);
-      }
+      if (lastHighlighted === idx) lastHighlighted = null;
     }
 
     function clearResults() {

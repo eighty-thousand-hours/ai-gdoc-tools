@@ -314,14 +314,14 @@ function highlightAndSelect(paragraphIndex, original, matchStart, matchEnd) {
 }
 
 /**
- * Clear previous highlight + highlight and scroll to new issue in a single server call.
+ * Scroll to an issue by selecting it in the document. We deliberately rely on
+ * the native selection (cursor) highlight rather than painting a red
+ * background: the background lingered after Apply/Dismiss and editors found it
+ * noisy. The selection alone shows exactly where the issue is. `prev` is kept
+ * for signature compatibility with the sidebar (no longer needs clearing).
  */
 function navigateToIssue(prev, next) {
-  if (prev && prev.original) {
-    highlightText(prev.paragraphIndex, prev.original, '#ffffff', prev.matchStart, prev.matchEnd);
-  }
   if (!next) return false;
-  highlightText(next.paragraphIndex, next.original, '#F4CCCC', next.matchStart, next.matchEnd);
   return selectText(next.paragraphIndex, next.original, next.matchStart, next.matchEnd);
 }
 

@@ -15,9 +15,8 @@ var MAX_DOCUMENT_CHARS = 30000;
 // Two editorial style guides live in the same Google Doc, on different tabs:
 //   website  — 80000hours.org house style (UK English, formal)
 //   substack — Substack style (US English)
-// Admins can override either via Script Properties (STYLE_GUIDE_URL_WEBSITE /
-// STYLE_GUIDE_URL_SUBSTACK). The legacy STYLE_GUIDE_URL still works as the
-// website default.
+// Admins set the URLs via Script Properties (STYLE_GUIDE_URL_WEBSITE /
+// STYLE_GUIDE_URL_SUBSTACK); these defaults are used if a property is unset.
 var DEFAULT_STYLE_GUIDE_URLS = {
   website: 'https://docs.google.com/document/d/1QfNZxjHL_hdQ78rpxuN2X3Mzmeu84Y0z9kf2yfs0ugI/edit?tab=t.co44vpnga19l',
   substack: 'https://docs.google.com/document/d/1QfNZxjHL_hdQ78rpxuN2X3Mzmeu84Y0z9kf2yfs0ugI/edit?tab=t.7azm9muq0wsu'
@@ -38,7 +37,6 @@ function styleGuideUrlForVariant_(variant) {
     return props.getProperty('STYLE_GUIDE_URL_SUBSTACK') || DEFAULT_STYLE_GUIDE_URLS.substack;
   }
   return props.getProperty('STYLE_GUIDE_URL_WEBSITE') ||
-         props.getProperty('STYLE_GUIDE_URL') ||
          DEFAULT_STYLE_GUIDE_URLS.website;
 }
 

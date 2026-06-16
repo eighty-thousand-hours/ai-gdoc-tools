@@ -417,22 +417,11 @@ var FORMATTING_RULES = [
     suggestion: '80,000 Hours',
     severity: 'info',
     category: 'formatting'
-  },
-  {
-    id: 'fmt-oxford-comma-check',
-    // Flag "X, Y and Z" (list of three without Oxford comma before "and")
-    pattern: /(\w[\w\s]+),\s+(\w[\w\s]+)\s+and\s+(\w)/g,
-    message: 'Check for Oxford comma: "X, Y, and Z" not "X, Y and Z".',
-    suggestion: null,
-    severity: 'info',
-    category: 'formatting',
-    test: function(match) {
-      // Only flag if the structure looks like a list item (not a compound sentence)
-      var part1 = match[1].split(' ').length;
-      var part2 = match[2].split(' ').length;
-      return part1 <= 4 && part2 <= 4;
-    }
   }
+  // Oxford/serial commas are handled by the AI pass, not a regex. A pattern
+  // can't reliably tell a three-item list ("X, Y and Z") from a compound
+  // sentence, so the old deterministic rule produced noisy false positives and
+  // never knew whether a comma actually belonged. See the LLM style prompt.
 ];
 
 // ---------------------------------------------------------------------------

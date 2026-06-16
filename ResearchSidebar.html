@@ -196,7 +196,7 @@
 
   <? if (activeTool === 'links') { ?>
   <div class="pane active" id="pane-links">
-    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Checks that every external link actually loads (no 404s or broken pages), then uses AI to verify each linked page genuinely supports the claim it's attached to. (Uses AI)</div>
+    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Checks that every external link in the current tab actually loads (no 404s or broken pages), then uses AI to verify each linked page genuinely supports the claim it's attached to. Scans the current tab only. (Uses AI)</div>
     <div class="controls">
       <button class="btn btn-primary" id="btnLinks" onclick="startLinkVerification()">Test and fact-check links</button>
       <button class="btn btn-secondary" id="btnLinksStop" onclick="stopLinkVerification()" style="display:none">Stop</button>
@@ -206,7 +206,7 @@
   </div>
   <? } else { ?>
   <div class="pane active" id="pane-recency">
-    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Uses AI with web search to find developments in the last ~14 days that contradict or update claims in the draft. (Uses AI)</div>
+    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Uses AI with web search to find developments in the last ~14 days that contradict or update claims in the current tab. Scans the current tab only. (Uses AI)</div>
     <div class="controls">
       <button class="btn btn-primary" id="btnRecency" onclick="runRecency()">Check for recent developments</button>
     </div>

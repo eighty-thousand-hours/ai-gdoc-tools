@@ -158,11 +158,11 @@
 
   <div class="header">
     <h2>Archive external links</h2>
-    <div class="subtitle">Replaces every external link in the doc with its latest Wayback Machine snapshot. If no snapshot exists, automatically saves one first. 80,000 Hours links are left unchanged.</div>
+    <div class="subtitle">Replaces every external link in the current tab with its latest Wayback Machine snapshot. If no snapshot exists, automatically saves one first. 80,000 Hours links are left unchanged. Only the current tab is affected.</div>
   </div>
 
   <div class="note">
-    <b>Heads up:</b> this modifies your doc. Run it once you're done editing — it's not easy to undo individual link rewrites in bulk. (Use the debug panel below to bulk un-archive if needed.)
+    <b>Heads up:</b> this modifies the current tab. Run it once you're done editing — it's not easy to undo individual link rewrites in bulk. (Use the debug panel below to bulk un-archive if needed.)
   </div>
 
   <div class="controls">
@@ -174,7 +174,7 @@
 
   <div class="debug-toggle" onclick="toggleDebug()" id="debugToggle">&#9881; Debug</div>
   <div class="debug-panel" id="debugPanel">
-    <div class="desc">Reverses the archive operation: finds every web.archive.org link in the doc and rewrites it back to its original URL.</div>
+    <div class="desc">Reverses the archive operation: finds every web.archive.org link in the current tab and rewrites it back to its original URL.</div>
     <button class="btn btn-secondary" id="btnUnarchive" onclick="runUnarchive()">Un-archive links</button>
     <div class="debug-status" id="debugStatus"></div>
     <div class="summary" id="debugSummary"></div>

@@ -270,6 +270,19 @@ function applyFix(paragraphIndex, original, replacement, matchStart, matchEnd) {
   var deltaEnd = range.end - suf; // exclusive
   var insertion = replacement.substring(pre, replacement.length - suf);
 
+  // Safety net for misaligned suggestions: when the replacement shares no
+  // common prefix with the original, it may restate text that already sits
+  // immediately before the edit point (e.g. an Oxford-comma fix whose excerpt
+  // covered only the list's tail but whose suggestion repeated the whole
+  // list). Inserting it verbatim would duplicate that leading text, so strip
+  // any leading run of the insertion that's already present right before it.
+  if (pre === 0 && insertion) {
+    var paraText = paragraph.getText();
+    var k = Math.min(deltaStart, insertion.length);
+    while (k > 0 && paraText.substring(deltaStart - k, deltaStart) !== insertion.substring(0, k)) k--;
+    if (k > 0) insertion = insertion.substring(k);
+  }
+
   var textElement = paragraph.editAsText();
   // Remember attributes at the character just before the delta so the
   // inserted text inherits them (style matches the surrounding run).

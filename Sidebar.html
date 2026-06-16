@@ -398,16 +398,6 @@
     <div class="subtitle">Flags style and formatting issues using deterministic rules. Toggle on the AI option below for additional structural and tone feedback (uses AI).</div>
   </div>
 
-  <div class="controls">
-    <button class="btn btn-primary" id="btnCheck" onclick="runCheck()">Check document</button>
-    <button class="btn btn-secondary" id="btnClear" onclick="clearResults()" style="display:none">Clear</button>
-  </div>
-
-  <div class="toggle-row">
-    <input type="checkbox" id="toggleLLM">
-    <label for="toggleLLM">Include AI-powered style suggestions</label>
-  </div>
-
   <div class="style-variant">
     <div class="sv-label">Style guide</div>
     <label class="sv-option">
@@ -422,6 +412,16 @@
   </div>
 
   <div class="sg-warning" id="styleGuideWarning"></div>
+
+  <div class="toggle-row">
+    <input type="checkbox" id="toggleLLM">
+    <label for="toggleLLM">Include AI-powered style suggestions</label>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" id="btnCheck" onclick="runCheck()">Check tab</button>
+    <button class="btn btn-secondary" id="btnClear" onclick="clearResults()" style="display:none">Clear</button>
+  </div>
 
   <div class="status" id="status"></div>
 
@@ -633,7 +633,7 @@
     function onCheckError(err) {
       var btn = document.getElementById('btnCheck');
       btn.disabled = false;
-      btn.textContent = 'Check document';
+      btn.textContent = 'Check tab';
       showStatus('error', 'Error: ' + (err.message || err));
     }
 
@@ -795,7 +795,7 @@
       document.getElementById('summary').className = 'summary';
       document.getElementById('filters').className = 'filters';
       document.getElementById('status').className = 'status';
-      document.getElementById('btnCheck').textContent = 'Check document';
+      document.getElementById('btnCheck').textContent = 'Check tab';
       document.getElementById('btnClear').style.display = 'none';
     }
 

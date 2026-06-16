@@ -54,10 +54,12 @@ clasp update-deployment -V <version> -d "<desc>" \
   YOUR_APPS_SCRIPT_DEPLOYMENT_ID   # 3. point the Marketplace deployment at it
 ```
 
-**Steps 1–3 do NOT reach users on their own.** You must then, in the Google Cloud Console for the add-on's project:
+**Steps 1–3 do NOT reach users on their own.** You must then, in the Google Cloud Console (GCP project `YOUR_GCP_PROJECT`):
 
-4. **APIs & Services → Google Workspace Marketplace SDK → App Configuration** — set the **`Docs add-on script version`** field to the new version number.
-5. **Store Listing** tab → **Publish**.
+4. **App Configuration** — set the **`Docs add-on script version`** field to the new version number:
+   <https://console.cloud.google.com/apis/api/appsmarket-component.googleapis.com/googleapps_sdk?project=YOUR_GCP_PROJECT>
+5. **Store Listing → Publish**:
+   <https://console.cloud.google.com/apis/api/appsmarket-component.googleapis.com/googleapps_sdk_publish?project=YOUR_GCP_PROJECT>
 
 Only after steps 4–5 do org editors get the update (on their next Doc reload). Changing OAuth scopes additionally triggers Marketplace re-review. The `@HEAD` deployment and the bound host Doc always run the latest pushed code, so you can test there before publishing.
 

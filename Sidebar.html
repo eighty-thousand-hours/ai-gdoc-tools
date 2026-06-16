@@ -114,10 +114,7 @@
     }
     .style-variant .sv-link {
       color: #1a73e8;
-      text-decoration: none;
-      font-size: 11px;
-      margin-left: 4px;
-      white-space: nowrap;
+      text-decoration: underline;
     }
     .style-variant .sv-link:hover { text-decoration: underline; }
     .style-variant .sv-note {
@@ -404,14 +401,14 @@
   </div>
 
   <div class="style-variant">
-    <div class="sv-label">Style guide</div>
+    <div class="sv-label">Which style guide do you want to use?</div>
     <label class="sv-option">
       <input type="radio" name="styleVariant" value="website" checked onchange="checkStyleGuideConfig()">
-      <span>Use the 80000hours.org style guide (UK English; formal)<a class="sv-link" id="svLinkWebsite" target="_blank" rel="noopener" style="display:none">view&nbsp;&#8599;</a></span>
+      <span><a id="svLinkWebsite" target="_blank" rel="noopener" onclick="event.stopPropagation()">80000hours.org style guide</a> (UK English; formal)</span>
     </label>
     <label class="sv-option">
       <input type="radio" name="styleVariant" value="substack" onchange="checkStyleGuideConfig()">
-      <span>Use the Substack style guide (American English)<a class="sv-link" id="svLinkSubstack" target="_blank" rel="noopener" style="display:none">view&nbsp;&#8599;</a></span>
+      <span><a id="svLinkSubstack" target="_blank" rel="noopener" onclick="event.stopPropagation()">Substack style guide</a> (American English)</span>
     </label>
     <div class="sv-note">If the post is going to both, the 80000hours.org guide is more rigorous and should take precedence.</div>
   </div>
@@ -514,10 +511,11 @@
       if (!a) return;
       if (url) {
         a.href = url;
-        a.style.display = '';
+        a.className = 'sv-link';
       } else {
+        // No URL configured — show the guide name as plain text, not a link.
         a.removeAttribute('href');
-        a.style.display = 'none';
+        a.className = '';
       }
     }
 

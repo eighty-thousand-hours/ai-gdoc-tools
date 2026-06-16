@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(clasp *)",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/clasp-deploy-reminder.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

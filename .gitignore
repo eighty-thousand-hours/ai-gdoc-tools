@@ -1,2 +1,5 @@
 .clasp.json
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/**

@@ -116,6 +116,7 @@ function getDocumentText() {
 
 function runChecks(options) {
   options = options || {};
+  var variant = normalizeStyleVariant_(options.styleVariant);
   var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var issues = [];
@@ -124,12 +125,12 @@ function runChecks(options) {
     var paragraph = paragraphs[i];
     var text = paragraph.getText();
     if (text.trim() === '') continue;
-    var ruleIssues = checkParagraph(text, i, paragraph);
+    var ruleIssues = checkParagraph(text, i, paragraph, variant);
     issues = issues.concat(ruleIssues);
   }
 
   if (options.useLLM) {
-    var llmIssues = runLLMCheck(getDocumentText());
+    var llmIssues = runLLMCheck(getDocumentText(), variant);
     issues = issues.concat(llmIssues);
   }
 
@@ -299,8 +300,8 @@ function selectText(paragraphIndex, original, matchStart, matchEnd) {
 // LLM check (called separately from sidebar for async loading)
 // ---------------------------------------------------------------------------
 
-function runLLMCheckFromSidebar() {
-  return runLLMCheck(getDocumentText());
+function runLLMCheckFromSidebar(styleVariant) {
+  return runLLMCheck(getDocumentText(), normalizeStyleVariant_(styleVariant));
 }
 
 // ---------------------------------------------------------------------------

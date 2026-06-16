@@ -12,29 +12,80 @@ var MAX_DOCUMENT_CHARS = 30000;
 // Style guide fetch (cached)
 // ---------------------------------------------------------------------------
 
+// Two editorial style guides live in the same Google Doc, on different tabs:
+//   website  — 80000hours.org house style (UK English, formal)
+//   substack — Substack style (US English)
+// Admins can override either via Script Properties (STYLE_GUIDE_URL_WEBSITE /
+// STYLE_GUIDE_URL_SUBSTACK). The legacy STYLE_GUIDE_URL still works as the
+// website default.
+var DEFAULT_STYLE_GUIDE_URLS = {
+  website: 'https://docs.google.com/document/d/1QfNZxjHL_hdQ78rpxuN2X3Mzmeu84Y0z9kf2yfs0ugI/edit?tab=t.co44vpnga19l',
+  substack: 'https://docs.google.com/document/d/1QfNZxjHL_hdQ78rpxuN2X3Mzmeu84Y0z9kf2yfs0ugI/edit?tab=t.7azm9muq0wsu'
+};
+
 /**
- * Fetch the editorial style guide from a Google Doc and return it as plain text.
- * Cached for 6 hours. Returns empty string if not configured or on error.
- *
- * Script Properties required:
- *   STYLE_GUIDE_URL  — Google Doc URL or bare doc ID
+ * Normalize the style variant coming from the sidebar to a known value.
+ * Defaults to 'website' (UK English) — the more rigorous guide, which should
+ * win when a post is going to both locations.
  */
-function getStyleGuideText_() {
+function normalizeStyleVariant_(variant) {
+  return (variant === 'substack') ? 'substack' : 'website';
+}
+
+function styleGuideUrlForVariant_(variant) {
+  var props = PropertiesService.getScriptProperties();
+  if (variant === 'substack') {
+    return props.getProperty('STYLE_GUIDE_URL_SUBSTACK') || DEFAULT_STYLE_GUIDE_URLS.substack;
+  }
+  return props.getProperty('STYLE_GUIDE_URL_WEBSITE') ||
+         props.getProperty('STYLE_GUIDE_URL') ||
+         DEFAULT_STYLE_GUIDE_URLS.website;
+}
+
+/**
+ * Read the plain text of a Google Doc, or of a specific tab when the URL
+ * carries a `tab=t.xxxx` fragment (the two style guides are tabs of one doc).
+ * Falls back to the document body if the tab can't be resolved.
+ */
+function fetchDocOrTabText_(url) {
+  var idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  var docId = idMatch ? idMatch[1] : url;
+  var tabMatch = url.match(/[?&#]tab=(t\.[a-zA-Z0-9_-]+)/);
+  var tabId = tabMatch ? tabMatch[1] : null;
+
+  var doc = DocumentApp.openById(docId);
+  if (tabId) {
+    try {
+      var tab = doc.getTab(tabId);
+      if (tab) return tab.asDocumentTab().getBody().getText().trim();
+    } catch (e) {
+      Logger.log('Style guide tab fetch failed (' + tabId + '), using first tab: ' + e.message);
+    }
+  }
+  return doc.getBody().getText().trim();
+}
+
+/**
+ * Fetch the editorial style guide for the given variant ('website' | 'substack')
+ * and return it as plain text. Cached per variant for 6 hours. Returns empty
+ * string on error.
+ */
+function getStyleGuideText_(variant) {
+  variant = normalizeStyleVariant_(variant);
+  var cacheKey = 'style_guide_text_' + variant;
   var cache = CacheService.getScriptCache();
-  var cached = cache.get('style_guide_text');
+  var cached = cache.get(cacheKey);
   if (cached) return cached;
 
-  var url = PropertiesService.getScriptProperties().getProperty('STYLE_GUIDE_URL');
+  var url = styleGuideUrlForVariant_(variant);
   if (!url) return '';
 
   try {
-    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    var docId = match ? match[1] : url;
-    var text = DocumentApp.openById(docId).getBody().getText().trim();
-    if (text) cache.put('style_guide_text', text, 21600);
+    var text = fetchDocOrTabText_(url);
+    if (text) cache.put(cacheKey, text, 21600);
     return text;
   } catch (e) {
-    Logger.log('Style guide fetch error: ' + e.message);
+    Logger.log('Style guide fetch error (' + variant + '): ' + e.message);
     return '';
   }
 }
@@ -69,21 +120,20 @@ function getShortcodeGuideText_() {
 /**
  * Debug helpers — bypass cache and return fetch results for the sidebar Advanced panel.
  */
-function getStyleGuideDebug() {
+function getStyleGuideDebug(variant) {
+  variant = normalizeStyleVariant_(variant);
   var cache = CacheService.getScriptCache();
-  var cached = cache.get('style_guide_text');
-  if (cached) return { text: cached, cached: true };
+  var cached = cache.get('style_guide_text_' + variant);
+  if (cached) return { text: cached, cached: true, variant: variant };
 
-  var url = PropertiesService.getScriptProperties().getProperty('STYLE_GUIDE_URL');
-  if (!url) return { text: '', error: 'STYLE_GUIDE_URL not set in Script Properties.' };
+  var url = styleGuideUrlForVariant_(variant);
+  if (!url) return { text: '', error: 'No style guide URL configured for ' + variant + '.', variant: variant };
 
   try {
-    var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    var docId = match ? match[1] : url;
-    var text = DocumentApp.openById(docId).getBody().getText().trim();
-    return { text: text, cached: false };
+    var text = fetchDocOrTabText_(url);
+    return { text: text, cached: false, variant: variant };
   } catch (e) {
-    return { text: '', error: e.message };
+    return { text: '', error: e.message, variant: variant };
   }
 }
 
@@ -275,12 +325,22 @@ var STYLE_GUIDE_OUTPUT_FORMAT = [
   'Return ONLY the JSON array. No markdown, no commentary. If no issues found, return [].'
 ].join('\n');
 
-function buildStyleCheckPrompt_() {
+var STYLE_VARIANT_NOTES = {
+  website: 'TARGET PUBLICATION: the 80000hours.org website. Use BRITISH English spelling and conventions and the formal 80,000 Hours house voice. Apply the editorial style guide below.',
+  substack: 'TARGET PUBLICATION: the 80,000 Hours Substack. Use AMERICAN English spelling and conventions. Apply the Substack style guide below. (If this post is also going to the website, the website guide is more rigorous and takes precedence.)'
+};
+
+function buildStyleCheckPrompt_(variant) {
+  variant = normalizeStyleVariant_(variant);
   var base = getSystemPrompt();
-  var styleGuide = getStyleGuideText_();
+  var styleGuide = getStyleGuideText_(variant);
   var shortcodeGuide = getShortcodeGuideText_();
   var prompt = base;
-  if (styleGuide) prompt += '\n\n## 80,000 Hours editorial style guide\n\n' + styleGuide;
+  prompt += '\n\n## Target publication\n\n' + STYLE_VARIANT_NOTES[variant];
+  if (styleGuide) {
+    var heading = variant === 'substack' ? 'Substack' : 'website (80000hours.org)';
+    prompt += '\n\n## 80,000 Hours ' + heading + ' style guide\n\n' + styleGuide;
+  }
   if (shortcodeGuide) prompt += '\n\n## 80,000 Hours shortcode guide\n\n' + shortcodeGuide;
   prompt += '\n\n' + STYLE_GUIDE_OUTPUT_FORMAT;
   return prompt;
@@ -290,7 +350,8 @@ function buildStyleCheckPrompt_() {
 // Main LLM check
 // ---------------------------------------------------------------------------
 
-function runLLMCheck(documentText) {
+function runLLMCheck(documentText, variant) {
+  variant = normalizeStyleVariant_(variant);
   var config = getLLMConfig_();
   if (!config.apiKey) {
     return [{
@@ -329,7 +390,7 @@ function runLLMCheck(documentText) {
   }
 
   var userMessage = 'Review the following document for stylistic issues according to the 80,000 Hours style guide:\n\n' + text;
-  var options = provider.buildRequest(config.apiKey, model, buildStyleCheckPrompt_(), userMessage);
+  var options = provider.buildRequest(config.apiKey, model, buildStyleCheckPrompt_(variant), userMessage);
 
   try {
     var response = UrlFetchApp.fetch(provider.url, options);

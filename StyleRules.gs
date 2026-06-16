@@ -8,7 +8,9 @@
 // Glossary: spelling and terminology
 // ---------------------------------------------------------------------------
 
-var GLOSSARY_RULES = [
+// British-English spelling conversions. These apply ONLY to the website
+// variant (UK English); the Substack variant (US English) skips them.
+var BRITISH_SPELLING_RULES = [
 
   // -------------------------------------------------------------------------
   // British English: -ise / -isation forms (American -ize → British -ise)
@@ -104,13 +106,18 @@ var GLOSSARY_RULES = [
   ['\\bfulfillment\\b', 'fulfilment', null],
   ['\\bskillful\\b', 'skilful', null],
 
+  // "towards" is British-leaning; American English prefers "toward".
+  ['\\btoward\\b', 'towards', 'The 80k style guide prefers "towards"'],
+];
+
+var GLOSSARY_RULES = [
+
   // -------------------------------------------------------------------------
   // 80k preferred word choices (from style guide)
   // -------------------------------------------------------------------------
   ['alright', 'all right', 'Always two words'],
   ['\\bokay\\b', 'OK', null],
   ['\\bamongst\\b', 'among', 'The 80k style guide prefers "among"'],
-  ['\\btoward\\b', 'towards', 'The 80k style guide prefers "towards"'],
   ['\\bwhilst\\b', 'while', 'The 80k style guide prefers "while"'],
   ['data are', 'data is', 'The 80k style guide treats "data" as singular'],
   ['in regards to', 'with regard to', null],
@@ -498,10 +505,24 @@ var MATH_RULES = [
 // Rule engine
 // ---------------------------------------------------------------------------
 
-function buildGlossaryRules_() {
+/**
+ * Build the glossary rule set for a given style variant.
+ *   - 'website'  (default) — UK English: includes British spelling rules.
+ *   - 'substack'           — US English: skips British spelling rules.
+ */
+function buildGlossaryRules_(variant) {
+  variant = (variant === 'substack') ? 'substack' : 'website';
+  var rules = compileGlossaryEntries_(GLOSSARY_RULES, 'glossary');
+  if (variant !== 'substack') {
+    rules = rules.concat(compileGlossaryEntries_(BRITISH_SPELLING_RULES, 'spelling'));
+  }
+  return rules;
+}
+
+function compileGlossaryEntries_(entries, idPrefix) {
   var rules = [];
-  for (var i = 0; i < GLOSSARY_RULES.length; i++) {
-    var entry = GLOSSARY_RULES[i];
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
     var wrong = entry[0];
     var correct = entry[1];
     var note = entry[2];
@@ -526,7 +547,7 @@ function buildGlossaryRules_() {
     }
 
     rules.push({
-      id: 'glossary-' + i,
+      id: idPrefix + '-' + i,
       category: 'glossary',
       severity: correct ? 'warning' : 'info',
       pattern: pattern,
@@ -562,10 +583,10 @@ function isParagraphInTable_(paragraph) {
   return false;
 }
 
-function checkParagraph(text, paragraphIndex, paragraph) {
+function checkParagraph(text, paragraphIndex, paragraph, variant) {
   var issues = [];
   var allRules = [].concat(
-    buildGlossaryRules_(),
+    buildGlossaryRules_(variant),
     FORMATTING_RULES,
     MATH_RULES
   );

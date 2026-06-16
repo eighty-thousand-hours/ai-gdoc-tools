@@ -84,6 +84,42 @@
       height: 16px;
     }
 
+    /* Style-guide chooser */
+    .style-variant {
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+    }
+    .style-variant .sv-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #5f6368;
+      margin-bottom: 8px;
+    }
+    .style-variant .sv-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      color: #202124;
+      margin-bottom: 6px;
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .style-variant .sv-option input[type="radio"] {
+      margin-top: 2px;
+    }
+    .style-variant .sv-note {
+      font-size: 11px;
+      color: #5f6368;
+      font-style: italic;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
     /* Status */
     .status {
       padding: 8px 12px;
@@ -346,6 +382,19 @@
     <label for="toggleLLM">Include AI-powered style suggestions</label>
   </div>
 
+  <div class="style-variant">
+    <div class="sv-label">Style guide</div>
+    <label class="sv-option">
+      <input type="radio" name="styleVariant" value="website" checked>
+      <span>Use the 80000hours.org style guide (UK English; formal)</span>
+    </label>
+    <label class="sv-option">
+      <input type="radio" name="styleVariant" value="substack">
+      <span>Use the Substack style guide (American English)</span>
+    </label>
+    <div class="sv-note">If the post is going to both, the 80000hours.org guide is more rigorous and should take precedence.</div>
+  </div>
+
   <div class="status" id="status"></div>
 
   <div class="summary" id="summary"></div>
@@ -408,6 +457,12 @@
     var allIssues = [];
     var activeFilter = 'all';
     var llmPending = false;
+    var selectedStyleVariant = 'website';
+
+    function getStyleVariant() {
+      var checked = document.querySelector('input[name="styleVariant"]:checked');
+      return (checked && checked.value) || 'website';
+    }
 
     function runCheck() {
       var btn = document.getElementById('btnCheck');
@@ -419,6 +474,7 @@
       document.getElementById('filters').className = 'filters';
 
       var useLLM = document.getElementById('toggleLLM').checked;
+      selectedStyleVariant = getStyleVariant();
 
       // Phase 1: deterministic rules (instant)
       google.script.run
@@ -426,7 +482,7 @@
           onDeterministicComplete(issues, useLLM);
         })
         .withFailureHandler(onCheckError)
-        .runChecks({ useLLM: false });
+        .runChecks({ useLLM: false, styleVariant: selectedStyleVariant });
     }
 
     function onDeterministicComplete(issues, useLLM) {
@@ -464,7 +520,7 @@
         google.script.run
           .withSuccessHandler(onLLMComplete)
           .withFailureHandler(onLLMError)
-          .runLLMCheckFromSidebar();
+          .runLLMCheckFromSidebar(selectedStyleVariant);
       }
     }
 
@@ -741,7 +797,7 @@
           }
         })
         .withFailureHandler(function(err) { setAdvStatus('debugStyleStatus', 'Error: ' + (err.message || err), '#c5221f'); })
-        .getStyleGuideDebug();
+        .getStyleGuideDebug(getStyleVariant());
     }
 
     function debugShortcodeGuide() {

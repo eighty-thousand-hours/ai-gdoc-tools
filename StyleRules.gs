@@ -504,10 +504,32 @@ var MATH_RULES = [
 function buildGlossaryRules_(variant) {
   variant = (variant === 'substack') ? 'substack' : 'website';
   var rules = compileGlossaryEntries_(GLOSSARY_RULES, 'glossary', false);
-  if (variant !== 'substack') {
+  if (variant === 'substack') {
+    // US English: the same spelling list, flipped to flag British -> American.
+    rules = rules.concat(compileGlossaryEntries_(reverseSpellingRules_(BRITISH_SPELLING_RULES), 'us-spelling', true));
+  } else {
     rules = rules.concat(compileGlossaryEntries_(BRITISH_SPELLING_RULES, 'spelling', true));
   }
   return rules;
+}
+
+/**
+ * Flip [american, british] spelling pairs into [british, american] so the same
+ * word list enforces American spelling for the Substack variant. The American
+ * side is sometimes written as a regex (e.g. "\\bcolor\\b"); strip the regex
+ * bits so it reads as a plain suggestion word ("color"). Notes are dropped —
+ * they describe the British direction.
+ */
+function reverseSpellingRules_(entries) {
+  var out = [];
+  for (var i = 0; i < entries.length; i++) {
+    var american = entries[i][0];
+    var british = entries[i][1];
+    if (!american || !british) continue;
+    var americanPlain = american.replace(/\\b/g, '').replace(/\\(.)/g, '$1');
+    out.push([british, americanPlain, null]);
+  }
+  return out;
 }
 
 function compileGlossaryEntries_(entries, idPrefix, skipProperNouns) {

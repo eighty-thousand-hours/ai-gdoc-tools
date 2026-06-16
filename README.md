@@ -35,32 +35,45 @@ Seven tools, all accessible from the **80k Editorial Tools** menu in any Google 
 
 ## Setup
 
-Deployed as an internal Marketplace add-on via [`clasp`](https://github.com/google/clasp). There are two script projects: a standalone script (Marketplace deployment) and a container-bound script (development).
+Deployed as an internal Google Workspace Marketplace add-on via [`clasp`](https://github.com/google/clasp). There is a single live Apps Script project (container-bound to a host Doc); its `scriptId` lives in the gitignored `.clasp.json`.
 
 ```bash
 npm install -g @google/clasp
 clasp login
-clasp push                    # pushes to standalone script (.clasp.json)
-
-# To push to the container-bound script:
-cp .clasp.json .clasp.json.standalone
-cp .clasp.json.container-bound .clasp.json
-clasp push
-cp .clasp.json.standalone .clasp.json
+clasp push --force            # upload code to the live script
 ```
 
-After pushing, create a version and update the Marketplace deployment:
+`.claspignore` keeps non-add-on files (`docs/`, `README.md`, clasp templates) out of the push.
+
+### Publishing an update to the whole org
 
 ```bash
-clasp version "description"
-clasp deploy -i YOUR_APPS_SCRIPT_DEPLOYMENT_ID -V <new-version-number>
+clasp push --force                                   # 1. upload the latest code
+clasp create-version "what changed"                  # 2. cut an immutable version (note the number printed)
+clasp update-deployment -V <version> -d "<desc>" \
+  YOUR_APPS_SCRIPT_DEPLOYMENT_ID   # 3. point the Marketplace deployment at it
 ```
 
-**Important**: also update the version number in the GCP Marketplace SDK App Configuration (`Docs add-on script version` field), then publish from the Store Listing tab.
+**Steps 1–3 do NOT reach users on their own.** You must then, in the Google Cloud Console for the add-on's project:
+
+4. **APIs & Services → Google Workspace Marketplace SDK → App Configuration** — set the **`Docs add-on script version`** field to the new version number.
+5. **Store Listing** tab → **Publish**.
+
+Only after steps 4–5 do org editors get the update (on their next Doc reload). Changing OAuth scopes additionally triggers Marketplace re-review. The `@HEAD` deployment and the bound host Doc always run the latest pushed code, so you can test there before publishing.
 
 ### Script Properties
 
 Set these in the Apps Script editor: **Project Settings → Script Properties**.
+
+Style & shortcode guides (for the "Check against style & shortcode guide" tool):
+
+| Property | Value |
+|---|---|
+| `STYLE_GUIDE_URL_WEBSITE` | Google Doc/tab URL for the 80000hours.org (UK English) style guide |
+| `STYLE_GUIDE_URL_SUBSTACK` | Google Doc/tab URL for the Substack (US English) style guide |
+| `SHORTCODE_GUIDE_URL` | Google Doc URL for the WordPress shortcode guide |
+
+A tab-specific URL (ending `…/edit?tab=t.xxxx`) reads just that tab. If a `STYLE_GUIDE_URL_*` property is unset, that variant runs with no external guide text and the sidebar shows a warning.
 
 LLM features:
 

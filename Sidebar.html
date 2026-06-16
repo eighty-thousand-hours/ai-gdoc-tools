@@ -594,6 +594,13 @@
       }
     }
 
+    // Two char ranges in the same paragraph overlap (used for cross-pass dedup).
+    function rangesOverlap_(a, b) {
+      if (a.matchStart == null || a.matchEnd == null ||
+          b.matchStart == null || b.matchEnd == null) return false;
+      return a.matchStart < b.matchEnd && b.matchStart < a.matchEnd;
+    }
+
     function onLLMComplete(llmIssues) {
       llmPending = false;
       var btn = document.getElementById('btnCheck');
@@ -605,6 +612,19 @@
       for (var i = 0; i < llmIssues.length; i++) {
         llmIssues[i].isAI = true;
       }
+
+      // Cross-pass dedup. The deterministic engine owns spelling, glossary,
+      // filler, and link-anchor spans; the AI is told not to re-flag those but
+      // doesn't always comply. Drop any AI issue whose span overlaps a
+      // deterministic issue in the same paragraph, leaving the authoritative
+      // deterministic card (which also has the correct Apply behaviour).
+      var deterministic = allIssues.filter(function (d) { return !d.isAI; });
+      llmIssues = llmIssues.filter(function (ai) {
+        return !deterministic.some(function (d) {
+          return d.paragraphIndex === ai.paragraphIndex && rangesOverlap_(d, ai);
+        });
+      });
+
       allIssues = allIssues.concat(llmIssues);
 
       // Re-sort by position

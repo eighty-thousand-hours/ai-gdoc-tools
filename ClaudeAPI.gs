@@ -35,6 +35,21 @@ function styleGuideUrlForVariant_(variant) {
 }
 
 /**
+ * Whether a style-guide URL is configured for the chosen variant. The sidebar
+ * uses this to warn the user (and name the Script Property tech needs to set)
+ * when the selected guide isn't configured.
+ */
+function getStyleGuideConfigStatus(variant) {
+  variant = normalizeStyleVariant_(variant);
+  return {
+    variant: variant,
+    configured: !!styleGuideUrlForVariant_(variant),
+    property: (variant === 'substack') ? 'STYLE_GUIDE_URL_SUBSTACK' : 'STYLE_GUIDE_URL_WEBSITE',
+    label: (variant === 'substack') ? 'Substack (American English)' : '80000hours.org (UK English)'
+  };
+}
+
+/**
  * Read the plain text of a Google Doc, or of a specific tab when the URL
  * carries a `tab=t.xxxx` fragment (the two style guides are tabs of one doc).
  * Falls back to the document body if the tab can't be resolved.

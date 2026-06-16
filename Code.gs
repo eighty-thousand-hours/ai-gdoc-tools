@@ -111,6 +111,56 @@ function getDocumentText() {
 }
 
 // ---------------------------------------------------------------------------
+// Text normalization (shared by excerpt/claim matching)
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a string for fuzzy substring matching while keeping a map back to
+ * the original character offsets. The LLM (and ASCII-cleaning) frequently
+ * returns text with straight quotes, hyphens, and collapsed whitespace where
+ * the document has smart quotes, en/em dashes, ellipsis characters, or
+ * non-breaking spaces — so an exact indexOf fails even though the text is
+ * "the same". This normalizes both sides to a common form.
+ *
+ * Returns { norm, map } where map[i] is the original index of norm.charAt(i),
+ * so a hit in `norm` can be translated back to a precise document range.
+ */
+function buildNormalizedIndex_(orig) {
+  var norm = '';
+  var map = [];
+  var prevSpace = false;
+  for (var i = 0; i < orig.length; i++) {
+    var c = orig.charAt(i);
+    var rep;
+    if (c === '‘' || c === '’' || c === '‚' || c === '‛') rep = "'";
+    else if (c === '“' || c === '”' || c === '„' || c === '‟') rep = '"';
+    else if (c === '–' || c === '—') rep = '-';
+    else if (c === '…') rep = '...';
+    else if (c === ' ') rep = ' ';
+    else if (/\s/.test(c)) rep = ' ';
+    else rep = c;
+
+    if (rep === ' ') {
+      if (prevSpace) continue; // collapse runs of whitespace
+      prevSpace = true;
+      norm += ' ';
+      map.push(i);
+    } else {
+      prevSpace = false;
+      for (var k = 0; k < rep.length; k++) {
+        norm += rep.charAt(k);
+        map.push(i);
+      }
+    }
+  }
+  return { norm: norm, map: map };
+}
+
+function normalizeString_(s) {
+  return s ? buildNormalizedIndex_(s).norm : '';
+}
+
+// ---------------------------------------------------------------------------
 // Main checking pipeline
 // ---------------------------------------------------------------------------
 

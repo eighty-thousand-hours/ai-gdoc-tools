@@ -942,7 +942,7 @@ var RECENCY_CHECK_SYSTEM_PROMPT = [
   'After the tool calls are done, emit exactly ONE final message whose entire content is a JSON array (starting with "[" and ending with "]"). No preamble. No prose. No markdown code fence. No trailing commentary.',
   '',
   'Each finding has:',
-  '  - "claim": the specific sentence or phrase from the draft (verbatim, ASCII-clean)',
+  '  - "claim": a contiguous run of words copied EXACTLY from the draft (at least 8 words if available). Copy it verbatim — do not paraphrase, summarize, reorder, or insert ellipses. This string is used to locate the claim in the document, so it must appear in the draft word-for-word.',
   '  - "finding": a one-sentence summary of what the recent source says, with units / time-horizon / scope explicit',
   '  - "reasoning": a one-sentence justification for why this is a real conflict (not a scope or time mismatch)',
   '  - "sourceUrl": canonical URL of the supporting source',

@@ -349,34 +349,50 @@ function decodeHtmlEntities_(s) {
 // ---------------------------------------------------------------------------
 
 /**
- * Find and select the given claim text in the document. Claude is told to
- * quote from the draft but may paraphrase, so we fall back through
- * progressively looser matches: full string → first 40 chars → first 20.
+ * Find and select the given claim text in the document.
+ *
+ * Claude is told to quote the draft verbatim, but two things still break a
+ * naive indexOf: (1) the JSON is ASCII-cleaned, so smart quotes, en/em
+ * dashes, ellipses, and non-breaking spaces in the draft no longer match;
+ * (2) the model sometimes trims or lightly paraphrases. We handle (1) by
+ * matching on a normalized form of both the claim and each paragraph (with a
+ * map back to real offsets so the selection is precise), and (2) by falling
+ * back to progressively shorter leading word-runs of the claim.
  */
 function navigateToClaim(claimText) {
   if (!claimText) return false;
-  var body = DocumentApp.getActiveDocument().getBody();
+  var doc = DocumentApp.getActiveDocument();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
 
-  var attempts = [
-    claimText,
-    claimText.substring(0, 60),
-    claimText.substring(0, 40),
-    claimText.substring(0, 25)
-  ];
+  var needleFull = normalizeString_(claimText).trim();
+  if (needleFull.length < 12) return false;
 
-  for (var a = 0; a < attempts.length; a++) {
-    var needle = attempts[a].trim();
-    if (needle.length < 12) continue;
-    for (var p = 0; p < paragraphs.length; p++) {
-      var textElement = paragraphs[p].editAsText();
-      var content = textElement.getText();
-      var idx = content.indexOf(needle);
-      if (idx === -1) continue;
-      var range = DocumentApp.getActiveDocument().newRange()
-        .addElement(textElement, idx, idx + needle.length - 1)
+  // Try the whole claim first, then shorter leading word-runs so a paraphrased
+  // tail still locates the start of the sentence.
+  var words = needleFull.split(' ');
+  var needles = [needleFull];
+  [14, 10, 7, 5].forEach(function(count) {
+    if (words.length > count) needles.push(words.slice(0, count).join(' '));
+  });
+
+  for (var p = 0; p < paragraphs.length; p++) {
+    var textElement = paragraphs[p].editAsText();
+    var content = textElement.getText();
+    if (!content) continue;
+    var idx = buildNormalizedIndex_(content);
+
+    for (var a = 0; a < needles.length; a++) {
+      var needle = needles[a];
+      if (needle.length < 12) continue;
+      var nPos = idx.norm.indexOf(needle);
+      if (nPos === -1) continue;
+      var startOrig = idx.map[nPos];
+      var endOrig = idx.map[nPos + needle.length - 1] + 1;
+      var range = doc.newRange()
+        .addElement(textElement, startOrig, endOrig - 1)
         .build();
-      DocumentApp.getActiveDocument().setSelection(range);
+      doc.setSelection(range);
       return true;
     }
   }

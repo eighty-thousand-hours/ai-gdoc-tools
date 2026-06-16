@@ -35,7 +35,7 @@ Seven tools, all accessible from the **80k Editorial Tools** menu in any Google 
 
 ## Setup
 
-Deployed as an internal Google Workspace Marketplace add-on via [`clasp`](https://github.com/google/clasp). There is a single live Apps Script project (container-bound to a host Doc); its `scriptId` lives in the gitignored `.clasp.json`.
+Deployed as an internal Google Workspace Marketplace add-on via [`clasp`](https://github.com/google/clasp). There is a single live Apps Script project (container-bound to a host Doc); its `scriptId` is committed in `.clasp.json` (the id is not a secret — auth is separate, via `clasp login` → `~/.clasprc.json`).
 
 ```bash
 npm install -g @google/clasp

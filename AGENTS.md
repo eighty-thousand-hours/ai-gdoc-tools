@@ -1,7 +1,8 @@
 # Notes for AI assistants
 
-Self-contained guidance for non-Claude-Code tools (Claude Code reads `CLAUDE.md`,
-which mirrors this). See `README.md` for full setup and commands.
+Canonical guidance for any AI assistant working in this repo. Claude Code reads
+`CLAUDE.md`, which imports this file (`@AGENTS.md`); other tools read this file
+directly. See `README.md` for full setup and commands.
 
 ## Deploying / publishing — read before you deploy
 

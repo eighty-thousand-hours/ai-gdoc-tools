@@ -1,4 +1,3 @@
-.clasp.json
 .claude/*
 !.claude/settings.json
 !.claude/hooks/

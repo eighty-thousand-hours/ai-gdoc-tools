@@ -1,6 +1,7 @@
 {
-  "scriptId": "1aMwdUAsZRXguJ6nLCe2CFM5Yo-aNa3jJ4kxCEBk2qHz_0tzPizTD-TVv",
+  "scriptId": "1b2kj50d3c0eO3OfLND6L5av2AXmCiXaMGOukA7qNAPicPQVUBMfddWaS",
   "rootDir": ".",
+  "parentId": "1Ky0QqkHwp99EINZ36ASAFFmmdiMZm3N4fGuv9__6yps",
   "scriptExtensions": [
     ".js",
     ".gs"

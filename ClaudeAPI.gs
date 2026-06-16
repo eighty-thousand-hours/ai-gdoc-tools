@@ -459,6 +459,13 @@ function parseLLMResponse_(responseText, documentText) {
     for (var i = 0; i < parsed.length; i++) {
       var item = parsed[i];
       var location = findExcerptLocation_(item.excerpt, paragraphs);
+      if (!location) {
+        // Excerpt isn't a verbatim substring of the draft — the model
+        // paraphrased or hallucinated it. Drop it rather than highlight the
+        // wrong span (or the top of the doc).
+        Logger.log('Style LLM excerpt not found, skipping: ' + (item.excerpt || '').substring(0, 80));
+        continue;
+      }
 
       issues.push({
         ruleId: 'llm-' + (item.category || 'style') + '-' + i,
@@ -520,33 +527,40 @@ function extractJsonArray_(text) {
   return null;
 }
 
+/**
+ * Locate an LLM-provided excerpt in the document and return its real character
+ * range, or null if the excerpt does not actually appear.
+ *
+ * Matching is done on a normalized form (smart quotes, dashes, ellipses, and
+ * whitespace folded) so that minor punctuation differences between the model's
+ * output and the document still match, while a precise offset map translates
+ * the hit back to the original text.
+ *
+ * Returning null is important: the model sometimes invents an anchor phrase
+ * that isn't in the draft (e.g. it rewrites "importance of AI" as "the
+ * strategic importance of AI"). The previous fuzzy fallback matched on just
+ * the first 30 characters and placed the suggestion at an unrelated spot — or,
+ * failing that, silently at the very top of the document. Callers now treat
+ * null as "drop this suggestion" rather than mis-placing it.
+ */
 function findExcerptLocation_(excerpt, paragraphs) {
-  if (!excerpt) return { paragraphIndex: 0, matchStart: 0, matchEnd: 0 };
+  if (!excerpt) return null;
+  var needle = normalizeString_(excerpt).trim();
+  if (needle.length < 3) return null;
 
   for (var i = 0; i < paragraphs.length; i++) {
-    var idx = paragraphs[i].text.indexOf(excerpt);
-    if (idx !== -1) {
+    var idx = buildNormalizedIndex_(paragraphs[i].text);
+    var nPos = idx.norm.indexOf(needle);
+    if (nPos !== -1) {
       return {
         paragraphIndex: paragraphs[i].paragraphIndex,
-        matchStart: idx,
-        matchEnd: idx + excerpt.length
+        matchStart: idx.map[nPos],
+        matchEnd: idx.map[nPos + needle.length - 1] + 1
       };
     }
   }
 
-  var prefix = excerpt.substring(0, 30);
-  for (var j = 0; j < paragraphs.length; j++) {
-    var jdx = paragraphs[j].text.indexOf(prefix);
-    if (jdx !== -1) {
-      return {
-        paragraphIndex: paragraphs[j].paragraphIndex,
-        matchStart: jdx,
-        matchEnd: jdx + excerpt.length
-      };
-    }
-  }
-
-  return { paragraphIndex: 0, matchStart: 0, matchEnd: 0 };
+  return null;
 }
 
 // ===========================================================================
@@ -697,6 +711,12 @@ function parseLinkSuggestions_(responseText, documentText) {
       }
 
       var location = findExcerptLocation_(item.excerpt, paragraphs);
+      if (!location) {
+        // The anchor phrase isn't actually in the document — the model
+        // hallucinated it. Skip rather than apply a link to the wrong text.
+        Logger.log('Link suggestion excerpt not in doc, skipping: ' + (item.excerpt || '').substring(0, 80));
+        continue;
+      }
 
       suggestions.push({
         excerpt: item.excerpt,

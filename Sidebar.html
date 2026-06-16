@@ -398,6 +398,11 @@
     <div class="subtitle">Flags style and formatting issues using deterministic rules. Toggle on the AI option below for additional structural and tone feedback (uses AI).</div>
   </div>
 
+  <div class="toggle-row">
+    <input type="checkbox" id="toggleLLM" checked>
+    <label for="toggleLLM">Include AI-powered style suggestions</label>
+  </div>
+
   <div class="style-variant">
     <div class="sv-label">Style guide</div>
     <label class="sv-option">
@@ -412,11 +417,6 @@
   </div>
 
   <div class="sg-warning" id="styleGuideWarning"></div>
-
-  <div class="toggle-row">
-    <input type="checkbox" id="toggleLLM">
-    <label for="toggleLLM">Include AI-powered style suggestions</label>
-  </div>
 
   <div class="controls">
     <button class="btn btn-primary" id="btnCheck" onclick="runCheck()">Check tab</button>

@@ -132,6 +132,20 @@ function copyBodyAsMarkdown_(sourceBody, targetBody, fnState) {
   var listGlyphType = null;
   var listCounter = 0;
   var skipIndex = -1;
+  var prevType = null;
+
+  // Markdown needs a BLANK line between block elements for them to render as
+  // separate paragraphs / before a list / around a heading. Appending one
+  // Google Docs paragraph per block only yields single newlines when pasted,
+  // so we emit an empty paragraph between blocks — everywhere a writer would
+  // have hit Enter. Consecutive list items are the one exception (they stay
+  // tight, matching how lists render).
+  function blockSeparator(curType) {
+    if (prevType === null) return;
+    if (prevType === DocumentApp.ElementType.LIST_ITEM && curType === DocumentApp.ElementType.LIST_ITEM) return;
+    var blank = targetBody.appendParagraph('');
+    blank.setHeading(DocumentApp.ParagraphHeading.NORMAL);
+  }
 
   for (var i = 0; i < n; i++) {
     if (i === skipIndex) continue;
@@ -145,6 +159,7 @@ function copyBodyAsMarkdown_(sourceBody, targetBody, fnState) {
         if (nextChild && nextChild.getType() === DocumentApp.ElementType.PARAGRAPH && isItalicCaption_(nextChild)) {
           var figure = imageParagraphWithCaptionToFigure_(child, nextChild, fnState);
           if (figure) {
+            blockSeparator(type);
             var lines = figure.split('\n');
             for (var fl = 0; fl < lines.length; fl++) {
               var fp = targetBody.appendParagraph(lines[fl]);
@@ -152,29 +167,38 @@ function copyBodyAsMarkdown_(sourceBody, targetBody, fnState) {
             }
             skipIndex = i + 1;
             listCounter = 0;
+            prevType = type;
             continue;
           }
         }
       }
+      blockSeparator(type);
       copyParagraphAsMarkdown_(child, targetBody, fnState);
       listCounter = 0;
+      prevType = type;
     } else if (type === DocumentApp.ElementType.LIST_ITEM) {
+      blockSeparator(type);
       var li = listItemToMarkdown_(child, listGlyphType, listCounter, fnState);
       var p = targetBody.appendParagraph(li.text);
       p.setHeading(DocumentApp.ParagraphHeading.NORMAL);
       listGlyphType = li.glyphType;
       listCounter = li.counter;
+      prevType = type;
     } else if (type === DocumentApp.ElementType.TABLE) {
+      blockSeparator(type);
       var rows = tableRowsToMarkdown_(child);
       for (var r = 0; r < rows.length; r++) {
         var rp = targetBody.appendParagraph(rows[r]);
         rp.setHeading(DocumentApp.ParagraphHeading.NORMAL);
       }
       listCounter = 0;
+      prevType = type;
     } else if (type === DocumentApp.ElementType.HORIZONTAL_RULE) {
+      blockSeparator(type);
       var hr = targetBody.appendParagraph('---');
       hr.setHeading(DocumentApp.ParagraphHeading.NORMAL);
       listCounter = 0;
+      prevType = type;
     }
   }
 }

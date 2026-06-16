@@ -27,7 +27,7 @@ function showLinkArchiverSidebar() {
 }
 
 function transformLinksToArchive() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var replacements = [];
   var keptInternal = [];
@@ -153,7 +153,7 @@ function transformLinksToArchive() {
 }
 
 function unarchiveLinks() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var restored = [];
   // Matches https://web.archive.org/web/<timestamp>[flag]/<original-url>

@@ -74,8 +74,28 @@ function checkAuth() {
 // Document reading
 // ---------------------------------------------------------------------------
 
+/**
+ * Return the body of the *active tab* rather than the whole document.
+ *
+ * Google Docs now supports multiple tabs in a single document, but the legacy
+ * Document.getBody() always returns the first tab's body. Every editorial tool
+ * here should operate on whichever tab the editor is currently looking at, so
+ * we route all document reads/writes through this helper. Falls back to the
+ * plain document body on older Docs that don't expose the tabs API yet.
+ */
+function getActiveBody_() {
+  var doc = DocumentApp.getActiveDocument();
+  try {
+    var tab = doc.getActiveTab();
+    if (tab) return tab.asDocumentTab().getBody();
+  } catch (e) {
+    // Tabs API unavailable — fall through to the legacy body.
+  }
+  return doc.getBody();
+}
+
 function getDocumentParagraphs() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var result = [];
   for (var i = 0; i < paragraphs.length; i++) {
@@ -87,7 +107,7 @@ function getDocumentParagraphs() {
 }
 
 function getDocumentText() {
-  return DocumentApp.getActiveDocument().getBody().getText();
+  return getActiveBody_().getText();
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +116,7 @@ function getDocumentText() {
 
 function runChecks(options) {
   options = options || {};
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var issues = [];
 
@@ -174,7 +194,7 @@ function resolveRange_(paragraph, original, matchStart, matchEnd) {
  * touch only a few characters, so the surrounding links/footnotes survive.
  */
 function applyFix(paragraphIndex, original, replacement, matchStart, matchEnd) {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
@@ -218,7 +238,7 @@ function applyFix(paragraphIndex, original, replacement, matchStart, matchEnd) {
 }
 
 function highlightText(paragraphIndex, original, color, matchStart, matchEnd) {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
@@ -259,7 +279,7 @@ function navigateToIssue(prev, next) {
  */
 function selectText(paragraphIndex, original, matchStart, matchEnd) {
   var doc = DocumentApp.getActiveDocument();
-  var body = doc.getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
@@ -291,7 +311,7 @@ function runLLMCheckFromSidebar() {
  * Get all existing links in the document, so the LLM can avoid re-suggesting them.
  */
 function getExistingLinks() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var links = [];
   var numChildren = body.getNumChildren();
 
@@ -334,7 +354,7 @@ function suggestLinks() {
  * when the excerpt appears multiple times.
  */
 function applyLink(paragraphIndex, linkText, url, matchStart, matchEnd) {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex >= paragraphs.length) return false;
 
@@ -379,7 +399,7 @@ function suggestRelatedWork() {
  * after the last frontmatter field.
  */
 function applyRelatedWork(path) {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var limit = Math.min(paragraphs.length, 30);
   var NORMAL = DocumentApp.ParagraphHeading.NORMAL;

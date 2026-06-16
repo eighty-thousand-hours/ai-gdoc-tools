@@ -47,7 +47,7 @@ var UNVERIFIABLE_HTTP_STATUSES = {
  * are skipped.
  */
 function getDocumentExternalLinks() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   var links = [];
   var seen = {};
@@ -207,7 +207,7 @@ function verifyLink(index) {
  */
 function navigateToLink(paragraphIndex, anchorStart, anchorEnd, anchorText) {
   var doc = DocumentApp.getActiveDocument();
-  var body = doc.getBody();
+  var body = getActiveBody_();
   var paragraphs = body.getParagraphs();
   if (paragraphIndex == null || paragraphIndex >= paragraphs.length) return false;
 

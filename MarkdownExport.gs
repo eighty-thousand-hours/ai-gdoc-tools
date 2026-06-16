@@ -31,7 +31,7 @@ function showMarkdownSidebar() {
 // ---------------------------------------------------------------------------
 
 function convertDocToMarkdown() {
-  var body = DocumentApp.getActiveDocument().getBody();
+  var body = getActiveBody_();
   var fnState = { nextNumber: 1, definitions: [], warnings: [], imageCount: 0 };
   var pieces = [];
   var n = body.getNumChildren();

@@ -509,17 +509,19 @@ var MATH_RULES = [
  * Build the glossary rule set for a given style variant.
  *   - 'website'  (default) — UK English: includes British spelling rules.
  *   - 'substack'           — US English: skips British spelling rules.
+ * British spelling rules are flagged proper-noun-sensitive so org names keep
+ * their official spelling (see looksLikeProperNoun_).
  */
 function buildGlossaryRules_(variant) {
   variant = (variant === 'substack') ? 'substack' : 'website';
-  var rules = compileGlossaryEntries_(GLOSSARY_RULES, 'glossary');
+  var rules = compileGlossaryEntries_(GLOSSARY_RULES, 'glossary', false);
   if (variant !== 'substack') {
-    rules = rules.concat(compileGlossaryEntries_(BRITISH_SPELLING_RULES, 'spelling'));
+    rules = rules.concat(compileGlossaryEntries_(BRITISH_SPELLING_RULES, 'spelling', true));
   }
   return rules;
 }
 
-function compileGlossaryEntries_(entries, idPrefix) {
+function compileGlossaryEntries_(entries, idPrefix, skipProperNouns) {
   var rules = [];
   for (var i = 0; i < entries.length; i++) {
     var entry = entries[i];
@@ -554,10 +556,71 @@ function compileGlossaryEntries_(entries, idPrefix) {
       message: null,
       suggestion: correct || null,
       _note: note,
-      _isGlossary: true
+      _isGlossary: true,
+      _skipProperNouns: !!skipProperNouns
     });
   }
   return rules;
+}
+
+// ---------------------------------------------------------------------------
+// Protected ranges (URLs) and proper-noun detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Character ranges in a paragraph that style rules must NOT flag: literal URLs
+ * written out in the text (and bare www. addresses). Editors complained that
+ * the checker suggested British spellings inside URL slugs (e.g. "center" in
+ * ".../center-for-x"). We deliberately do NOT protect hyperlink anchor text —
+ * style rules should still see it (e.g. flagging a "click here" link).
+ */
+function getProtectedRanges_(text, paragraph) {
+  var ranges = [];
+  var urlRe = /\bhttps?:\/\/[^\s)]+|\bwww\.[^\s)]+/gi;
+  var m;
+  while ((m = urlRe.exec(text)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return ranges;
+}
+
+function isProtectedRange_(start, end, ranges) {
+  if (!ranges) return false;
+  for (var i = 0; i < ranges.length; i++) {
+    if (start < ranges[i].end && end > ranges[i].start) return true;
+  }
+  return false;
+}
+
+/**
+ * Heuristic: does this match look like part of a proper noun (an org/place
+ * name) rather than ordinary prose? Used to stop British-spelling rules from
+ * rewriting names like "Center for AI Safety", "World Health Organization", or
+ * "Department of Defense".
+ */
+function looksLikeProperNoun_(text, start, end, matched) {
+  // The matched word itself is capitalized.
+  if (/^[A-Z]/.test(matched)) return true;
+  // Immediately preceded by a Titlecase word (e.g. "Allen Center").
+  var before = text.substring(0, start).match(/([A-Za-z]+)\s+$/);
+  if (before && /^[A-Z][a-z]/.test(before[1])) return true;
+  // Immediately followed by a Titlecase word (e.g. "defense Department").
+  var after = text.substring(end).match(/^\s+([A-Za-z]+)/);
+  if (after && /^[A-Z][a-z]/.test(after[1])) return true;
+  return false;
+}
+
+/**
+ * Centralized accept/reject for a regex match: skip protected ranges, skip
+ * proper-noun matches for spelling rules, then apply any per-rule test.
+ */
+function acceptMatch_(rule, match, ctx) {
+  var start = match.index;
+  var end = match.index + match[0].length;
+  if (isProtectedRange_(start, end, ctx.protectedRanges)) return false;
+  if (rule._skipProperNouns && looksLikeProperNoun_(ctx.text, start, end, match[0])) return false;
+  if (rule.test && !rule.test(match, ctx)) return false;
+  return true;
 }
 
 /**
@@ -595,7 +658,8 @@ function checkParagraph(text, paragraphIndex, paragraph, variant) {
     paragraph: paragraph,
     paragraphIndex: paragraphIndex,
     text: text,
-    inTable: isParagraphInTable_(paragraph)
+    inTable: isParagraphInTable_(paragraph),
+    protectedRanges: getProtectedRanges_(text, paragraph)
   };
 
   for (var r = 0; r < allRules.length; r++) {
@@ -611,17 +675,15 @@ function checkParagraph(text, paragraphIndex, paragraph, variant) {
     var match;
     if (pattern.global) {
       while ((match = pattern.exec(text)) !== null) {
-        if (rule.test && !rule.test(match, ctx)) continue;
+        if (!acceptMatch_(rule, match, ctx)) continue;
         var issue = buildIssue_(rule, match, paragraphIndex);
         if (issue) issues.push(issue);
       }
     } else {
       match = pattern.exec(text);
-      if (match) {
-        if (!rule.test || rule.test(match, ctx)) {
-          var issue = buildIssue_(rule, match, paragraphIndex);
-          if (issue) issues.push(issue);
-        }
+      if (match && acceptMatch_(rule, match, ctx)) {
+        var issue2 = buildIssue_(rule, match, paragraphIndex);
+        if (issue2) issues.push(issue2);
       }
     }
   }

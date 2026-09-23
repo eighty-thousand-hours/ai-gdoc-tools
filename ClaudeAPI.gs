@@ -205,7 +205,7 @@ function resetSystemPrompt() {
 var PROVIDERS = {
   anthropic: {
     url: 'https://api.anthropic.com/v1/messages',
-    defaultModel: 'claude-sonnet-4-20250514',
+    defaultModel: 'claude-sonnet-4-6',
     buildRequest: function(apiKey, model, systemPrompt, userMessage) {
       return {
         method: 'post',

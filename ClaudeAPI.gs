@@ -7,6 +7,8 @@
  */
 
 var MAX_DOCUMENT_CHARS = 30000;
+var MAX_PARAGRAPH_CHARS = 2000;
+var DEFAULT_RECENCY_DAYS = 14;
 
 // ---------------------------------------------------------------------------
 // Style guide fetch (cached)
@@ -516,10 +518,19 @@ function parseLLMResponse_(responseText, documentText) {
  * the parsed array, or null if nothing parseable is found.
  */
 function extractJsonArray_(text) {
+  return extractJsonBlock_(text, '[', ']');
+}
+
+/** Same as extractJsonArray_, for a single JSON object. */
+function extractJsonObject_(text) {
+  return extractJsonBlock_(text, '{', '}');
+}
+
+function extractJsonBlock_(text, open, close) {
   if (!text) return null;
   var cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '');
 
-  var start = cleaned.indexOf('[');
+  var start = cleaned.indexOf(open);
   if (start === -1) return null;
 
   var depth = 0;
@@ -531,8 +542,8 @@ function extractJsonArray_(text) {
     if (ch === '\\') { escape = true; continue; }
     if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
-    if (ch === '[') depth++;
-    else if (ch === ']') {
+    if (ch === open) depth++;
+    else if (ch === close) {
       depth--;
       if (depth === 0) {
         var candidate = cleaned.substring(start, i + 1);
@@ -872,10 +883,13 @@ var LINK_VERIFICATION_SYSTEM_PROMPT = [
   'The user gives you:',
   '  - The surrounding sentence(s) from the draft (the "claim").',
   '  - The anchor text of the hyperlink.',
+  '  - The full paragraph the link sits in.',
   '  - The extracted text of the target page (may be truncated — the user will tell you).',
   '',
   'Assess whether the target page substantively supports, partially supports, or does not support the claim.',
   'Be generous about structural variation (e.g. the target may use different phrasing) but strict about factual fit.',
+  '',
+  'The anchor text is often generic ("Source", "here", "this report"). Judge the link against the claim the surrounding sentence(s) make, using the full paragraph when the sentence alone is unclear. Never return "unknown" just because the anchor text itself makes no claim.',
   '',
   'BIAS TOWARD "ok" WHEN UNCERTAIN. The default assumption is that an 80k editor placed this link deliberately. Flag a problem only when you have positive evidence that the target does not support the claim — not when you simply cannot find the supporting passage.',
   '',
@@ -910,12 +924,18 @@ function runLinkVerificationLLM(link, fetched) {
       ' chars — supporting passage may appear later; default to "unknown" or "ok" if you cannot find evidence either way)';
   }
 
+  var paragraph = link.paragraphText || '';
+  if (paragraph.length > MAX_PARAGRAPH_CHARS) paragraph = paragraph.substring(0, MAX_PARAGRAPH_CHARS) + '…';
+
   var user = [
     '## Claim (from the draft)',
     link.context,
     '',
     '## Anchor text',
     link.anchorText,
+    '',
+    '## Full paragraph',
+    paragraph,
     '',
     '## Target URL',
     link.url,
@@ -940,13 +960,10 @@ function runLinkVerificationLLM(link, fetched) {
     var content = provider.extractContent(body);
     if (!content) return { status: 'unknown', explanation: 'Empty response from Claude.' };
 
-    var cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
-    var parsed;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (jsonErr) {
-      Logger.log('Link verification raw response: ' + cleaned.substring(0, 400));
-      parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, '$1'));
+    var parsed = extractJsonObject_(content);
+    if (!parsed) {
+      Logger.log('Link verification raw response: ' + content.substring(0, 400));
+      return { status: 'error', explanation: 'Claude returned a non-JSON response. See script logs for details.' };
     }
     return {
       status: parsed.status || 'unknown',
@@ -967,7 +984,7 @@ var RECENCY_CHECK_SYSTEM_PROMPT = [
   'You help an 80,000 Hours draft avoid stale facts before publication.',
   '80,000 Hours is a nonprofit that researches careers with high social impact; its articles cover AI safety, global health, policy, career advice, and effective altruism.',
   '',
-  'You will be given a draft article. Use the web_search tool to look for developments in the last 14 days that would:',
+  'You will be given a draft article and a cutoff date. Use the web_search tool to look for developments since the cutoff date that would:',
   '  - contradict a factual claim in the draft (a number has moved, a release was withdrawn, a policy changed),',
   '  - or update it with materially new information the author might want to reflect.',
   '',
@@ -998,7 +1015,7 @@ var RECENCY_CHECK_SYSTEM_PROMPT = [
   'If nothing material was found, the entire final message is the literal three characters: []'
 ].join('\n');
 
-function runRecencyCheck(documentText) {
+function runRecencyCheck(documentText, sinceDate) {
   var config = getLLMConfig_();
   if (!config.apiKey) {
     return { error: 'LLM API key not configured.' };
@@ -1008,6 +1025,7 @@ function runRecencyCheck(documentText) {
   }
 
   var model = config.model || PROVIDERS.anthropic.defaultModel;
+  var since = recencyCutoffDate_(sinceDate);
   var text = documentText;
   if (text.length > MAX_DOCUMENT_CHARS) {
     text = text.substring(0, MAX_DOCUMENT_CHARS) + '\n\n[Document truncated at ' + MAX_DOCUMENT_CHARS + ' characters]';
@@ -1036,7 +1054,9 @@ function runRecencyCheck(documentText) {
       }],
       messages: [{
         role: 'user',
-        content: 'Draft article to check for recency issues:\n\n' + text
+        content: 'Today is ' + Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd') +
+          '. Cutoff date: ' + since + ' (only flag developments since then).\n\n' +
+          'Draft article to check for recency issues:\n\n' + text
       }]
     }),
     muteHttpExceptions: true
@@ -1063,11 +1083,22 @@ function runRecencyCheck(documentText) {
       Logger.log('Recency check: could not extract JSON array. Raw response: ' + content.substring(0, 600));
       return { error: 'Claude returned a non-JSON response. See script logs for details.' };
     }
-    return { findings: parsed.map(sanitizeFinding_) };
+    return { findings: parsed.map(sanitizeFinding_), since: since };
   } catch (e) {
     Logger.log('Recency check exception: ' + e.message);
     return { error: 'Claude API failure: ' + e.message };
   }
+}
+
+/**
+ * The sidebar's "since" date as yyyy-MM-dd, or DEFAULT_RECENCY_DAYS ago when
+ * it's missing, malformed, or in the future.
+ */
+function recencyCutoffDate_(sinceDate) {
+  var today = Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(sinceDate || '') && sinceDate <= today) return sinceDate;
+  var d = new Date(Date.now() - DEFAULT_RECENCY_DAYS * 24 * 60 * 60 * 1000);
+  return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
 }
 
 /**

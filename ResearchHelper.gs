@@ -163,6 +163,12 @@ function extractContext_(paragraphText, start, end) {
   // Expand to sentence-ish boundaries
   var pre = paragraphText.substring(ctxStart, start);
   var preMatch = pre.match(/[.!?]\s[^.!?]*$/);
+  // A generic anchor placed after the claim's full stop ("... signed it.
+  // (Source)") would otherwise get a context with no claim in it, so reach
+  // back one more sentence when the anchor's own sentence has no lead-in.
+  if (preMatch && wordCount_(pre.substring(preMatch.index + 2)) < 4) {
+    preMatch = pre.match(/[.!?]\s[^.!?]*[.!?]\s[^.!?]*$/);
+  }
   if (preMatch) ctxStart = ctxStart + preMatch.index + 2;
 
   var post = paragraphText.substring(end, ctxEnd);
@@ -170,6 +176,10 @@ function extractContext_(paragraphText, start, end) {
   if (postMatch) ctxEnd = end + postMatch[0].length;
 
   return paragraphText.substring(ctxStart, ctxEnd).trim();
+}
+
+function wordCount_(s) {
+  return s.split(/\s+/).filter(function(w) { return /\w/.test(w); }).length;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +273,8 @@ function fetchUrlText_(url) {
   // fetch and tell the editor to verify manually.
   var hostMatch = url.match(/^https?:\/\/([^\/]+)/i);
   var host = hostMatch ? hostMatch[1].toLowerCase() : '';
+  var embedded = fetchOEmbedText_(url, host);
+  if (embedded) return embedded;
   if (BLOCKED_FETCH_HOSTS[host]) {
     return {
       error: BLOCKED_FETCH_HOSTS[host] + ' blocks automated link checks — open the link to verify it manually',
@@ -312,6 +324,51 @@ function fetchUrlText_(url) {
     // Network errors (DNS, TLS, timeout) are also recoverable for the human
     // reader — flag them as unverifiable rather than broken.
     return { error: 'Fetch failed: ' + e.message, unverifiable: true };
+  }
+}
+
+// X posts and YouTube videos can't be read from their pages (login wall /
+// JS-only), but both expose an oEmbed endpoint that returns the post text or
+// the video title. Returns null when the URL isn't one of these or the
+// endpoint fails, so the caller falls back to its normal handling.
+var OEMBED_HOSTS = {
+  'x.com': 'x', 'www.x.com': 'x', 'twitter.com': 'x', 'www.twitter.com': 'x', 'mobile.twitter.com': 'x',
+  'youtube.com': 'youtube', 'www.youtube.com': 'youtube', 'm.youtube.com': 'youtube', 'youtu.be': 'youtube'
+};
+
+function fetchOEmbedText_(url, host) {
+  var kind = OEMBED_HOSTS[host];
+  if (!kind) return null;
+  if (kind === 'x' && !/\/status\/\d+/.test(url)) return null;
+
+  var endpoint = kind === 'x'
+    ? 'https://publish.twitter.com/oembed?omit_script=true&url='
+    : 'https://www.youtube.com/oembed?format=json&url=';
+  try {
+    var response = UrlFetchApp.fetch(endpoint + encodeURIComponent(url), {
+      muteHttpExceptions: true,
+      followRedirects: true
+    });
+    if (response.getResponseCode() !== 200) return null;
+    var data = JSON.parse(response.getContentText());
+    if (kind === 'x') {
+      return {
+        statusCode: 200,
+        title: 'Post on X by ' + (data.author_name || 'unknown author'),
+        text: stripHtml_(data.html || ''),
+        truncated: false
+      };
+    }
+    return {
+      statusCode: 200,
+      title: data.title || '',
+      text: 'YouTube video "' + (data.title || '') + '" from the channel ' + (data.author_name || 'unknown') +
+        '. Only the title and channel are available, not the transcript: judge whether this is plausibly the right video, and return "unknown" if the claim depends on what is said in it.',
+      truncated: false
+    };
+  } catch (e) {
+    Logger.log('oEmbed fetch failed for ' + url + ': ' + e.message);
+    return null;
   }
 }
 
@@ -408,7 +465,7 @@ function navigateToClaim(claimText) {
  * developments would contradict or update claims in the document. Returns an
  * array of findings.
  */
-function runRecencyCheckFromSidebar() {
+function runRecencyCheckFromSidebar(sinceDate) {
   var documentText = getDocumentText();
-  return runRecencyCheck(documentText);
+  return runRecencyCheck(documentText, sinceDate);
 }

@@ -41,6 +41,8 @@
     .pane.active { display: block; }
 
     .controls { display: flex; gap: 8px; margin-bottom: 14px; }
+    .since-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; color: #3c4043; }
+    .since-row input { font: inherit; padding: 4px 6px; border: 1px solid #dadce0; border-radius: 4px; }
     .btn {
       padding: 8px 14px;
       border-radius: 4px;
@@ -206,7 +208,11 @@
   </div>
   <? } else { ?>
   <div class="pane active" id="pane-recency">
-    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Uses AI with web search to find developments in the last ~14 days that contradict or update claims in the current tab. Scans the current tab only. (Uses AI)</div>
+    <div class="subtitle" style="color:#5f6368;font-size:12px;margin-bottom:12px;">Uses AI with web search to find developments since the date below that contradict or update claims in the current tab. Set it to when the article was last updated. Scans the current tab only. (Uses AI)</div>
+    <div class="since-row">
+      <label for="recencySince">Check since</label>
+      <input type="date" id="recencySince">
+    </div>
     <div class="controls">
       <button class="btn btn-primary" id="btnRecency" onclick="runRecency()">Check for recent developments</button>
     </div>
@@ -472,6 +478,21 @@
     // Recency check
     // -----------------------------------------------------------------------
 
+    (function initRecencySince() {
+      var input = document.getElementById('recencySince');
+      if (!input) return;
+      var d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+      input.value = d.toISOString().slice(0, 10);
+      input.max = new Date().toISOString().slice(0, 10);
+    })();
+
+    function formatSince(iso) {
+      var parts = (iso || '').split('-');
+      if (parts.length !== 3) return iso;
+      return new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]))
+        .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    }
+
     function runRecency() {
       var btn = document.getElementById('btnRecency');
       btn.disabled = true;
@@ -486,7 +507,7 @@
           btn.textContent = 'Check for recent developments';
           showStatus('recencyStatus', 'error', 'Error: ' + (err.message || err));
         })
-        .runRecencyCheckFromSidebar();
+        .runRecencyCheckFromSidebar(document.getElementById('recencySince').value);
     }
 
     function onRecencyComplete(result) {
@@ -501,7 +522,7 @@
 
       var findings = result.findings || [];
       if (findings.length === 0) {
-        showStatus('recencyStatus', 'done', 'No material updates found in the last 14 days.');
+        showStatus('recencyStatus', 'done', 'No material updates found since ' + formatSince(result.since) + '.');
         document.getElementById('recencyResults').innerHTML =
           '<div class="empty-state">Nothing recent contradicts the draft.</div>';
         return;

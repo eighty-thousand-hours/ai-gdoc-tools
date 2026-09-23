@@ -620,7 +620,14 @@ function textElementToMarkdown_(textElement) {
   if (!indices || indices.length === 0) indices = [0];
   indices.push(text.length);
 
-  var pieces = [];
+  // Build the styled runs, MERGING consecutive runs that share identical
+  // formatting. getTextAttributeIndices() splits wherever *any* attribute
+  // changes — including ones we don't render (font, size, or an invisible
+  // comment/suggestion anchor) — so a single bold phrase frequently arrives
+  // as several runs. Wrapping each run on its own collides adjacent markers
+  // into `**Understa****nd**` / `**Salary****:**`. Coalescing first means the
+  // marker is opened once and closed once across the whole styled span.
+  var runs = [];
   for (var i = 0; i < indices.length - 1; i++) {
     var start = indices[i];
     var end = indices[i + 1];
@@ -632,24 +639,40 @@ function textElementToMarkdown_(textElement) {
     var attrs;
     try { attrs = textElement.getAttributes(start); } catch (e) { attrs = {}; }
 
-    var bold = attrs[DocumentApp.Attribute.BOLD];
-    var italic = attrs[DocumentApp.Attribute.ITALIC];
-    var strikethrough = attrs[DocumentApp.Attribute.STRIKETHROUGH];
-    var url = attrs[DocumentApp.Attribute.LINK_URL];
+    var run = {
+      raw: raw,
+      bold: !!attrs[DocumentApp.Attribute.BOLD],
+      italic: !!attrs[DocumentApp.Attribute.ITALIC],
+      strikethrough: !!attrs[DocumentApp.Attribute.STRIKETHROUGH],
+      url: attrs[DocumentApp.Attribute.LINK_URL] || null
+    };
+
+    var last = runs.length > 0 ? runs[runs.length - 1] : null;
+    if (last && last.bold === run.bold && last.italic === run.italic &&
+        last.strikethrough === run.strikethrough && last.url === run.url) {
+      last.raw += run.raw;
+    } else {
+      runs.push(run);
+    }
+  }
+
+  var pieces = [];
+  for (var r = 0; r < runs.length; r++) {
+    var seg = runs[r];
 
     // Wrap markers around the visible portion only — Markdown won't render
     // `** word**` so leading/trailing whitespace must stay outside the wrappers.
-    var match = raw.match(/^(\s*)(.*?)(\s*)$/);
+    var match = seg.raw.match(/^(\s*)(.*?)(\s*)$/);
     var lead = match ? match[1] : '';
-    var core = match ? match[2] : raw;
+    var core = match ? match[2] : seg.raw;
     var trail = match ? match[3] : '';
 
     if (core) {
-      if (strikethrough) core = '~~' + core + '~~';
-      if (bold && italic) core = '***' + core + '***';
-      else if (bold) core = '**' + core + '**';
-      else if (italic) core = '*' + core + '*';
-      if (url) core = '[' + core + '](' + url + ')';
+      if (seg.strikethrough) core = '~~' + core + '~~';
+      if (seg.bold && seg.italic) core = '***' + core + '***';
+      else if (seg.bold) core = '**' + core + '**';
+      else if (seg.italic) core = '*' + core + '*';
+      if (seg.url) core = '[' + core + '](' + seg.url + ')';
     }
 
     pieces.push(lead + core + trail);
